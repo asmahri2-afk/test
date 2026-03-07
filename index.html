@@ -323,11 +323,11 @@
     <!-- CONFIRM MODAL -->
     <div id="confirmModal" class="modal-backdrop hidden">
         <div class="modal-content">
-            <div class="modal-header"><h2>Confirm</h2></div>
+            <div class="modal-header"><h2 data-i18n="confirm">Confirm</h2></div>
             <div class="modal-body" id="confirmText"></div>
             <div class="modal-footer">
-                <button class="btn-secondary" id="confirmCancel">Cancel</button>
-                <button class="btn-danger" id="confirmOk">Remove</button>
+                <button class="btn-secondary" id="confirmCancel" data-i18n="cancel">Cancel</button>
+                <button class="btn-danger" id="confirmOk" data-i18n="remove">Remove</button>
             </div>
         </div>
     </div>
@@ -336,7 +336,7 @@
     <div id="alertOverlay" class="alert-overlay"></div>
     <div id="alertPanel" class="alert-panel">
         <div class="alert-header">
-            <h2>🔔 Alerts</h2>
+            <h2>🔔 <span data-i18n="warnings">Alerts</span></h2>
             <div style="display:flex;gap:6px;">
                 <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="markAllAlertsRead()">Read All</button>
                 <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="clearAlerts()">Clear</button>
@@ -390,27 +390,27 @@
     <!-- KPI BAR -->
     <div class="kpi-bar">
         <div class="kpi-item">
-            <div class="kpi-label">Fleet</div>
+            <div class="kpi-label" data-i18n="tracked">Fleet</div>
             <div class="kpi-value blue" id="kpiTotal">–</div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">Underway</div>
+            <div class="kpi-label" data-i18n="underway">Underway</div>
             <div class="kpi-value green" id="kpiUnderway">–</div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">At Port</div>
+            <div class="kpi-label" data-i18n="port">At Port</div>
             <div class="kpi-value blue" id="kpiAtPort">–</div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">Anchor</div>
+            <div class="kpi-label" data-i18n="atAnchor">Anchor</div>
             <div class="kpi-value yellow" id="kpiAtAnchor">–</div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">Stalled</div>
+            <div class="kpi-label" data-i18n="stalled">Stalled</div>
             <div class="kpi-value red" id="kpiStalled">–</div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">⚠ Sanctioned</div>
+            <div class="kpi-label">⚠ <span data-i18n="status">Sanctioned</span></div>
             <div class="kpi-value orange" id="kpiSanctioned">–</div>
         </div>
         <div class="kpi-item">
@@ -419,7 +419,7 @@
             <div class="kpi-health-bar"><div id="kpiHealthFill" class="kpi-health-fill" style="width:0%"></div></div>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">Updated</div>
+            <div class="kpi-label" data-i18n="lastUpdate">Updated</div>
             <div class="kpi-value" id="lastUpdatedTime" style="font-size:.78rem;">--</div>
         </div>
     </div>
@@ -433,16 +433,16 @@
         <!-- ADD VESSEL CARD -->
         <div class="card" id="addCard">
             <div class="card-header">
-                <span class="card-title">Add Vessel</span>
+                <span class="card-title" data-i18n="addVessel">Add Vessel</span>
                 <span id="apiStatusCard" class="health-pill">API: –</span>
             </div>
             <div class="card-body">
                 <div class="add-vessel-form">
                     <input type="text" id="imoInput" class="input-field" placeholder="7-digit IMO number..." maxlength="7" autocomplete="off" inputmode="numeric" style="flex:1;" />
-                    <button id="addBtn" class="btn-primary" disabled>＋ Add</button>
+                    <button id="addBtn" class="btn-primary" disabled>＋ <span data-i18n="track">Add</span></button>
                 </div>
                 <div id="namePreview"></div>
-                <p class="form-hint">Enter a valid 7-digit IMO number to track the vessel</p>
+                <p class="form-hint" data-i18n="imoHint">Enter a valid 7-digit IMO number to track the vessel</p>
             </div>
         </div>
 
@@ -461,12 +461,12 @@
                             <button id="viewMapBtnInner" onclick="toggleView('map')">⊕ Map</button>
                         </div>
                         <select id="sortSelect" class="select-field desktop-only" style="width:auto;font-size:.73rem;padding:6px 10px;">
-                            <option value="PRIORITY">Priority First</option>
-                            <option value="AGE_DESC">Oldest Signal</option>
-                            <option value="AGE_ASC">Newest Signal</option>
-                            <option value="STATUS_ASC">By Status</option>
-                            <option value="NAME_ASC">Name A–Z</option>
-                            <option value="NAME_DESC">Name Z–A</option>
+                            <option value="PRIORITY" data-i18n="priority">Priority First</option>
+                            <option value="AGE_DESC" data-i18n="oldestSignal">Oldest Signal</option>
+                            <option value="AGE_ASC" data-i18n="newestSignal">Newest Signal</option>
+                            <option value="STATUS_ASC" data-i18n="statusAsc">By Status</option>
+                            <option value="NAME_ASC" data-i18n="nameAsc">Name A–Z</option>
+                            <option value="NAME_DESC" data-i18n="nameDesc">Name Z–A</option>
                         </select>
                     </div>
                 </div>
@@ -478,23 +478,23 @@
 
                 <!-- FILTER CHIPS -->
                 <div class="filter-chips">
-                    <span class="chip active" data-filter="ALL">All</span>
-                    <span class="chip" data-filter="UNDERWAY">⚡ Underway</span>
-                    <span class="chip" data-filter="AT PORT">🏭 Port</span>
-                    <span class="chip" data-filter="AT ANCHOR">⚓ Anchor</span>
-                    <span class="chip" data-filter="STALLED">🔴 Stalled</span>
-                    <span class="chip priority-chip" data-filter="PRIORITY">🚩 Priority</span>
+                    <span class="chip active" data-filter="ALL" data-i18n="all">All</span>
+                    <span class="chip" data-filter="UNDERWAY">⚡ <span data-i18n="underway">Underway</span></span>
+                    <span class="chip" data-filter="AT PORT">🏭 <span data-i18n="atPort">Port</span></span>
+                    <span class="chip" data-filter="AT ANCHOR">⚓ <span data-i18n="atAnchor">Anchor</span></span>
+                    <span class="chip" data-filter="STALLED">🔴 <span data-i18n="stalled">Stalled</span></span>
+                    <span class="chip priority-chip" data-filter="PRIORITY">🚩 <span data-i18n="priority">Priority</span></span>
                     <span class="chip sanction-chip" data-filter="SANCTIONED">🚨 Sanctioned</span>
                 </div>
 
                 <!-- FILTER ROW (desktop) -->
                 <div class="desktop-only" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
                     <select id="ageFilter" class="select-field" style="flex:1;min-width:130px;font-size:.78rem;">
-                        <option value="ALL">All Signal Ages</option>
-                        <option value="1H">Last 1 hour</option>
-                        <option value="6H">Last 6 hours</option>
-                        <option value="24H">Last 24 hours</option>
-                        <option value="STALE">Stale (&gt;24h)</option>
+                        <option value="ALL" data-i18n="all">All Signal Ages</option>
+                        <option value="1H" data-i18n="last1Hour">Last 1 hour</option>
+                        <option value="6H" data-i18n="last6Hours">Last 6 hours</option>
+                        <option value="24H" data-i18n="last24Hours">Last 24 hours</option>
+                        <option value="STALE" data-i18n="stale">Stale (&gt;24h)</option>
                     </select>
                     <span id="dataStats" class="status-msg" style="align-self:center;font-size:.65rem;"></span>
                 </div>
@@ -510,16 +510,16 @@
                 <div id="mapView" class="map-view">
                     <div id="map"></div>
                     <div class="map-legend">
-                        <div class="legend-item"><div class="legend-color underway"></div><span>Underway</span></div>
-                        <div class="legend-item"><div class="legend-color port"></div><span>At Port</span></div>
-                        <div class="legend-item"><div class="legend-color anchor"></div><span>At Anchor</span></div>
-                        <div class="legend-item"><div class="legend-color stalled"></div><span>Stalled</span></div>
+                        <div class="legend-item"><div class="legend-color underway"></div><span data-i18n="underway">Underway</span></div>
+                        <div class="legend-item"><div class="legend-color port"></div><span data-i18n="port">At Port</span></div>
+                        <div class="legend-item"><div class="legend-color anchor"></div><span data-i18n="atAnchor">At Anchor</span></div>
+                        <div class="legend-item"><div class="legend-color stalled"></div><span data-i18n="stalled">Stalled</span></div>
                     </div>
                 </div>
 
                 <!-- STATUS BAR IN CARD -->
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;">
-                    <span id="lastUpdatedLabel" class="status-msg">Last updated: —</span>
+                    <span id="lastUpdatedLabel" class="status-msg">—</span>
                     <span id="systemHealth" class="health-pill">Checking...</span>
                 </div>
             </div>
