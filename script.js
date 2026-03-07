@@ -508,8 +508,11 @@ async function fetchGitHubData(path, fallback = null) {
     const url = `${CONFIG.RAW_BASE}${path}?_=${Date.now()}`;
     const res = await fetchWithTimeout(url, { cache: 'no-cache' }, 10000);
     if (!res.ok) throw new Error(`GitHub ${res.status}: ${path}`);
-    try { const data = await res.json(); return { data, sha: null, lastMod: Date.now(), source: 'raw' }; }
-    catch { return { data: fallback, sha: null, lastMod: Date.now(), source: 'error' }; }
+    // Read the actual file modification time from GitHub's Last-Modified header
+    const lastModHeader = res.headers.get('Last-Modified');
+    const lastMod = lastModHeader ? new Date(lastModHeader).getTime() : Date.now();
+    try { const data = await res.json(); return { data, sha: null, lastMod, source: 'raw' }; }
+    catch { return { data: fallback, sha: null, lastMod, source: 'error' }; }
 }
 
 async function ghPut(path, data, sha, message) {
@@ -570,7 +573,8 @@ async function loadData() {
         S.vesselsDataMap = nm;
         S.staticCache = new Map(Object.entries(si.data || {}));
         S.portsData = pi.data || {};
-        S.lastDataModified = new Date();
+        // Use the actual GitHub Last-Modified time (real data freshness), fall back to now
+        S.lastDataModified = vi.lastMod ? new Date(vi.lastMod) : new Date();
         saveToLocalStorage();
         generateAlerts(nm, tracked);
         updateAlertBadge();
@@ -578,8 +582,11 @@ async function loadData() {
         updateFleetKPI(tracked);
         if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} vessel${tracked.length !== 1 ? 's' : ''} tracked`;
         if (el.dataStats) el.dataStats.textContent = `${vl.length} in database · ${vi.source}`;
-        if (el.lastUpdatedTime) el.lastUpdatedTime.textContent = S.lastDataModified.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (el.lastUpdatedLabel) el.lastUpdatedLabel.textContent = `Last updated: ${S.lastDataModified.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const _locale = (typeof i18n !== 'undefined' && i18n.currentLang === 'FR') ? 'fr-FR' : 'en-US';
+        const _fmtOpts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        const _fmtTime = S.lastDataModified.toLocaleString(_locale, _fmtOpts);
+        if (el.lastUpdatedTime) el.lastUpdatedTime.textContent = _fmtTime;
+        if (el.lastUpdatedLabel) el.lastUpdatedLabel.textContent = `Last modified: ${_fmtTime}`;
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
         updateStatus(`Fleet loaded — ${tracked.length} vessels`, 'success');
@@ -1119,21 +1126,18 @@ function initPullToRefresh() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// I18N SHIM (works with translations.js if present, otherwise no-op)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-if (typeof i18n === 'undefined') {
-    window.i18n = { currentLang: 'EN', init() { }, setLang(l) { this.currentLang = l; } };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function init() {
     console.log('🚢 VesselTracker v5.5 — Final');
 
-    if (typeof i18n !== 'undefined' && i18n.init) i18n.init();
+    // i18n shim: only install AFTER DOMContentLoaded so translations.js gets
+    // first chance to define window.i18n. If it didn't, provide a safe no-op.
+    if (typeof i18n === 'undefined') {
+        window.i18n = { currentLang: 'EN', init() { }, setLang(l) { this.currentLang = l; } };
+    }
+    try { if (i18n.init) i18n.init(); } catch (e) { console.warn('i18n.init failed:', e); }
 
     // Sort selects
     if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
