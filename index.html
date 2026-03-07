@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>VesselTracker v5.4 — Maritime Operations</title>
+    <title>VesselTracker v5.5 — Maritime Operations</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="Real-time maritime vessel tracking and monitoring system" />
     <meta name="theme-color" content="#020c1a" />
@@ -328,7 +328,7 @@
             <div class="radar-core"><div class="radar-dot"></div></div>
             <div class="radar-ring"></div><div class="radar-ring"></div><div class="radar-ring"></div>
         </div>
-        <div class="brand-text"><h1>VESSELTRACKER</h1><span>Maritime Operations · v5.4</span></div>
+        <div class="brand-text"><h1>VESSELTRACKER</h1><span>Maritime Operations · v5.5</span></div>
     </div>
     <div class="header-right">
         <div id="headerClock" class="header-clock desktop-only">00:00:00 UTC</div>
@@ -434,7 +434,6 @@ const CONFIG = {
     ARRIVED_THRESHOLD_NM:30.0, REFRESH_INTERVAL:5*60000,
     SANCTIONS_URL:"https://raw.githubusercontent.com/asmahri2-afk/VesselTracker/main/data/sanctioned_imos.json",
 };
-// ✅ FIX: RAW_BASE was missing — all GitHub raw fetches were building URLs as "undefineddata/..."
 CONFIG.RAW_BASE = `https://raw.githubusercontent.com/${CONFIG.USERNAME}/${CONFIG.REPO}/${CONFIG.BRANCH}/`;
 
 let S = {
@@ -447,6 +446,8 @@ let S = {
     priorities:JSON.parse(localStorage.getItem("vt_priorities")||"[]"),
     sanctionedImos:new Set(), sanctionDetails:new Map(), sanctionsLoaded:false,
     weatherCache:new Map(), mapInstance:null, mapMarkers:[], mapInitialized:false, noteTimers:{},
+    // FIX: Track recent alerts per imo+type to prevent duplicates across refresh cycles
+    recentAlertKeys:new Set(),
 };
 
 const el = {
@@ -471,6 +472,12 @@ const el = {
     headerClock:document.getElementById("headerClock"), sanctionsStatus:document.getElementById("sanctionsStatus"),
     addCard:document.getElementById("addCard"),
 };
+
+// FIX: XSS protection — sanitize any user-derived strings before inserting into innerHTML
+function escapeHtml(str){
+    if(!str)return"";
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 
 // CLOCK
 function tickClock(){const n=new Date(),p=v=>String(v).padStart(2,"0");if(el.headerClock)el.headerClock.textContent=`${p(n.getUTCHours())}:${p(n.getUTCMinutes())}:${p(n.getUTCSeconds())} UTC`;}
@@ -519,7 +526,6 @@ async function loadSanctionsLists(){
         const total=S.sanctionedImos.size;
         const updated=data.updated?" · "+new Date(data.updated).toLocaleDateString():"";
         el.sanctionsStatus.innerHTML=`<span style="color:var(--success);font-size:.68rem;font-family:var(--mono);">✓ ${total.toLocaleString()} sanctioned IMOs${updated}</span>`;
-        console.log("Sanctions loaded:",total,"IMOs");
     }catch(e){
         console.warn("Sanctions unavailable:",e.message);
         S.sanctionsLoaded=true;
@@ -543,9 +549,20 @@ function checkFleetSanctions(){
 }
 
 // ALERTS
+// FIX: dedup non-sanction alerts per imo+type to prevent repeated firing across refresh cycles
 function pushAlert(type,imo,vessel,msg){
     const icons={stalled:"🔴",arrived:"⚓",stale:"📡",approaching:"🎯",added:"➕",removed:"➖",sanctioned:"🚨",priority:"🚩"};
+    // Sanctioned alerts already deduped below; for status-change alerts, use a cooldown key
     if(type==="sanctioned"&&S.alerts.some(a=>a.type==="sanctioned"&&a.imo===imo))return;
+    // FIX: For transient status alerts, don't repeat within same session if already fired
+    const dedupTypes=["stalled","arrived","stale","approaching"];
+    if(dedupTypes.includes(type)){
+        const key=`${type}:${imo}`;
+        if(S.recentAlertKeys.has(key))return;
+        S.recentAlertKeys.add(key);
+        // Clear after 30 min so it can re-alert if status changes again later
+        setTimeout(()=>S.recentAlertKeys.delete(key),30*60*1000);
+    }
     S.alerts.unshift({id:Date.now()+Math.random(),type,imo,vessel,msg,icon:icons[type]||"•",time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),read:false});
     if(S.alerts.length>60)S.alerts.pop();
     localStorage.setItem("vt_alerts",JSON.stringify(S.alerts));
@@ -553,7 +570,7 @@ function pushAlert(type,imo,vessel,msg){
 }
 function renderAlerts(){
     if(!S.alerts.length){el.alertList.innerHTML='<div class="alert-empty">📡 Monitoring fleet activity...</div>';return;}
-    el.alertList.innerHTML=S.alerts.map(a=>`<div class="alert-item ${a.read?"":"unread"} type-${a.type}"><div><span style="margin-right:4px;">${a.icon}</span><span class="alert-msg">${a.msg}</span></div><div class="alert-time">${a.time} · IMO ${a.imo}</div></div>`).join("");
+    el.alertList.innerHTML=S.alerts.map(a=>`<div class="alert-item ${a.read?"":"unread"} type-${a.type}"><div><span style="margin-right:4px;">${a.icon}</span><span class="alert-msg">${escapeHtml(a.msg)}</span></div><div class="alert-time">${a.time} · IMO ${a.imo}</div></div>`).join("");
 }
 function markAllAlertsRead(){S.alerts.forEach(a=>a.read=true);localStorage.setItem("vt_alerts",JSON.stringify(S.alerts));renderAlerts();updateAlertBadge();}
 function clearAlerts(){S.alerts=[];localStorage.setItem("vt_alerts",JSON.stringify(S.alerts));renderAlerts();updateAlertBadge();}
@@ -581,6 +598,8 @@ function saveNotes(imo,text){
 function onNoteInput(imo,ta){clearTimeout(S.noteTimers[imo]);S.noteTimers[imo]=setTimeout(()=>saveNotes(imo,ta.value),600);}
 
 // WEATHER
+// FIX: Check cache before firing, skip if already fetched this render cycle
+const _weatherPending=new Set();
 async function fetchAndRenderWeather(imo,lat,lon){
     if(!lat||!lon)return;
     const c=document.getElementById(`weather-${imo}`);if(!c)return;
@@ -588,15 +607,18 @@ async function fetchAndRenderWeather(imo,lat,lon){
     if(cached&&Date.now()-cached.ts<30*60000){
         const p=[];if(cached.wave!=null)p.push(`<span class="tag weather">🌊 ${Number(cached.wave).toFixed(1)}m</span>`);if(cached.wind!=null)p.push(`<span class="tag weather">💨 ${Number(cached.wind).toFixed(0)}kn</span>`);if(p.length)c.innerHTML=p.join("");return;
     }
+    if(_weatherPending.has(imo))return;
+    _weatherPending.add(imo);
     try{
         const[mr,wr]=await Promise.all([fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=wave_height`),fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m&wind_speed_unit=kn`)]);
         const md=await mr.json(),wd=await wr.json();
         const result={wave:md.current?.wave_height,wind:wd.current?.wind_speed_10m,ts:Date.now()};
         S.weatherCache.set(imo,result);
-        if(!document.getElementById(`weather-${imo}`))return;
+        const el2=document.getElementById(`weather-${imo}`);if(!el2)return;
         const p=[];if(result.wave!=null)p.push(`<span class="tag weather">🌊 ${Number(result.wave).toFixed(1)}m</span>`);if(result.wind!=null)p.push(`<span class="tag weather">💨 ${Number(result.wind).toFixed(0)}kn</span>`);
-        if(p.length)document.getElementById(`weather-${imo}`).innerHTML=p.join("");
-    }catch{}
+        if(p.length)el2.innerHTML=p.join("");
+    }catch(e){console.warn(`Weather fetch failed for ${imo}:`,e.message);}
+    finally{_weatherPending.delete(imo);}
 }
 
 // UTILS
@@ -628,25 +650,25 @@ async function ghPut(path,data,sha,message){
     return res.json();
 }
 async function updateStaticCache(imo,vd){
-    // Build the entry from whatever vessel data we have
     const entry={imo,name:vd.name||vd.vessel_name||`IMO ${imo}`,flag:vd.flag||"-",ship_type:vd.ship_type||"-",length_overall_m:vd.length_overall_m??"-",beam_m:vd.beam_m??"-",deadweight_t:vd.deadweight_t??"-",gross_tonnage:vd.gross_tonnage??"-",year_of_build:vd.year_of_build??"-"};
-    // Always update local state immediately so the UI benefits right away
     S.staticCache.set(imo,entry);
     try{
         const{data:cache}=await fetchGitHubData(CONFIG.STATIC_CACHE_PATH,{});
-        // Only skip if we already have a fully-populated entry (name is real, not a placeholder)
         const existing=cache[imo];
-        if(existing&&existing.name&&!existing.name.startsWith("IMO ")){
-            console.log(`Static cache: IMO ${imo} already cached as "${existing.name}", skipping write`);
-            return;
-        }
+        if(existing&&existing.name&&!existing.name.startsWith("IMO ")){return;}
         cache[imo]=entry;
         await ghPut(CONFIG.STATIC_CACHE_PATH,cache,null,`Add static data for IMO ${imo}`);
-        console.log(`Static cache: wrote IMO ${imo} (${entry.name}) to GitHub`);
-    }catch(e){
-        // Log clearly so it's visible in DevTools console
-        console.error(`Static cache write FAILED for IMO ${imo}:`,e.message);
-    }
+    }catch(e){console.error(`Static cache write FAILED for IMO ${imo}:`,e.message);}
+}
+
+// FIX: Vessel lookup now goes through Worker which injects API_SECRET — never hits Render directly
+async function lookupVesselViaWorker(imo){
+    const url=`${CONFIG.WORKER_URL}/vessel-lookup/${imo}`;
+    try{
+        const r=await fetchWithTimeout(url,{},8000);
+        if(!r.ok)return null;
+        return await r.json();
+    }catch{return null;}
 }
 
 // FLAG MAP
@@ -664,10 +686,35 @@ function getVesselStatus(v){
     return"UNDERWAY";
 }
 
+// FIX: Explicit timestamp parser — avoids Date.parse() cross-browser inconsistency (Safari)
+function parseAisTimestamp(s){
+    if(!s)return null;
+    // Try ISO first (fast path)
+    const iso=new Date(s);if(!isNaN(iso.getTime())&&s.includes("T"))return iso;
+    // "Mar 07, 2026 00:05 UTC" — VesselFinder format
+    const m=s.replace(" UTC","").trim().match(/^(\w{3})\s+(\d{1,2}),\s+(\d{4})\s+(\d{2}):(\d{2})$/);
+    if(m){const months={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};const mo=months[m[1]];if(mo===undefined)return null;return new Date(Date.UTC(+m[3],mo,+m[2],+m[4],+m[5]));}
+    // "2026-03-07 00:05:00 UTC" — backend stored format
+    const m2=s.replace(" UTC","").trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if(m2)return new Date(Date.UTC(+m2[1],+m2[2]-1,+m2[3],+m2[4],+m2[5],+m2[6]||0));
+    return null;
+}
+
 // TIME
 function formatSignalAge(s){
     if(!s)return{ageText:"N/A",ageClass:"age-stale",rawAgeMs:Infinity};
-    try{const t=Date.parse(s);if(isNaN(t))return{ageText:"Invalid",ageClass:"age-stale",rawAgeMs:Infinity};const ms=Date.now()-t,h=ms/3600000;let a,c;if(ms<60000){a="Just now";c="age-recent";}else if(h<1){const m=Math.floor(ms/60000);a=`${m}m ago`;c=m<=30?"age-recent":"age-moderate";}else if(h<24){a=`${h.toFixed(1)}h ago`;c=h<=3?"age-recent":"age-moderate";}else{a=`${Math.floor(h/24)}d ago`;c="age-stale";}if(ms>CONFIG.CRITICAL_THRESHOLD_MS)c="status-critical";return{ageText:a,ageClass:c,rawAgeMs:ms};}catch{return{ageText:"Error",ageClass:"age-stale",rawAgeMs:Infinity};}
+    try{
+        const dt=parseAisTimestamp(s);
+        if(!dt)return{ageText:"Invalid",ageClass:"age-stale",rawAgeMs:Infinity};
+        const ms=Date.now()-dt.getTime(),h=ms/3600000;
+        let a,c;
+        if(ms<60000){a="Just now";c="age-recent";}
+        else if(h<1){const m=Math.floor(ms/60000);a=`${m}m ago`;c=m<=30?"age-recent":"age-moderate";}
+        else if(h<24){a=`${h.toFixed(1)}h ago`;c=h<=3?"age-recent":"age-moderate";}
+        else{a=`${Math.floor(h/24)}d ago`;c="age-stale";}
+        if(ms>CONFIG.CRITICAL_THRESHOLD_MS)c="status-critical";
+        return{ageText:a,ageClass:c,rawAgeMs:ms};
+    }catch{return{ageText:"Error",ageClass:"age-stale",rawAgeMs:Infinity};}
 }
 function formatLocalTime(s){
     if(!s)return"N/A";
@@ -688,15 +735,17 @@ document.getElementById("imoInput").addEventListener("input",()=>{
     if(S.trackedImosCache.includes(imo)){el.namePreview.innerHTML=`<span style="color:var(--warning);font-size:.78rem;">⚠ Already tracked</span>`;el.addButton.disabled=true;return;}
     const isSanc=S.sanctionsLoaded&&S.sanctionedImos.has(imo);
     const warnHtml=isSanc?`<div style="background:var(--sanction-dim);border:1px solid rgba(255,69,0,.3);border-radius:8px;padding:8px 11px;margin-bottom:6px;font-size:.76rem;"><strong style="color:var(--sanction);">🚨 SANCTIONED VESSEL</strong><div style="color:var(--text-main);margin-top:2px;font-size:.7rem;">${[...new Set((S.sanctionDetails.get(imo)||[]).map(d=>d.list))].join(", ")||"Sanctions list"}</div></div>`:"";
-    if(S.staticCache.has(imo)){const c=S.staticCache.get(imo),fc=getFlagCode(c.flag),fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">`:"";el.namePreview.innerHTML=warnHtml+`<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${c.name||"IMO "+imo}</strong><span style="font-size:.65rem;background:var(--bg-elevated);padding:1px 5px;border-radius:4px;color:var(--text-soft);">cached</span></div>`;el.addButton.disabled=false;return;}
+    if(S.staticCache.has(imo)){const c=S.staticCache.get(imo),fc=getFlagCode(c.flag),fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">`:"";el.namePreview.innerHTML=warnHtml+`<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${escapeHtml(c.name||"IMO "+imo)}</strong><span style="font-size:.65rem;background:var(--bg-elevated);padding:1px 5px;border-radius:4px;color:var(--text-soft);">cached</span></div>`;el.addButton.disabled=false;return;}
     S.debounceTimer=setTimeout(async()=>{
         el.addButton.disabled=true;el.namePreview.innerHTML=warnHtml+`<span style="color:var(--text-soft);font-size:.78rem;">🔍 Looking up...</span>`;
-        try{let data=null;for(const ep of[`${CONFIG.RENDER_API}/vessel-full/${imo}`,`${CONFIG.RENDER_API}/vessel/${imo}`]){try{const r=await fetchWithTimeout(ep,{},5000);if(r.ok){data=await r.json();break;}}catch{}}
-        if(!data||data.found===false){el.namePreview.innerHTML=warnHtml+`<span style="color:var(--danger);font-size:.78rem;">✕ IMO ${imo} not found</span>`;el.addButton.disabled=!isSanc;return;}
-        const fc=getFlagCode(data.flag),fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">`:"";
-        el.namePreview.innerHTML=warnHtml+`<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${data.name||data.vessel_name||"IMO "+imo}</strong><span style="color:var(--text-soft);">${data.ship_type||""} · ${data.flag||""}</span></div>`;
-        el.addButton.disabled=false;updateStaticCache(imo,data).catch(()=>{});}
-        catch{el.namePreview.innerHTML=warnHtml+`<span style="color:var(--warning);font-size:.78rem;">⚠ Lookup failed — you can still add IMO ${imo}</span>`;el.addButton.disabled=false;}
+        try{
+            // FIX: Use Worker proxy — injects API_SECRET server-side, no 401
+            const data=await lookupVesselViaWorker(imo);
+            if(!data||data.found===false){el.namePreview.innerHTML=warnHtml+`<span style="color:var(--danger);font-size:.78rem;">✕ IMO ${imo} not found</span>`;el.addButton.disabled=!isSanc;return;}
+            const fc=getFlagCode(data.flag),fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">`:"";
+            el.namePreview.innerHTML=warnHtml+`<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${escapeHtml(data.name||data.vessel_name||"IMO "+imo)}</strong><span style="color:var(--text-soft);">${escapeHtml(data.ship_type||"")} · ${escapeHtml(data.flag||"")}</span></div>`;
+            el.addButton.disabled=false;updateStaticCache(imo,data).catch(()=>{});
+        }catch{el.namePreview.innerHTML=warnHtml+`<span style="color:var(--warning);font-size:.78rem;">⚠ Lookup failed — you can still add IMO ${imo}</span>`;el.addButton.disabled=false;}
     },800);
 });
 
@@ -731,13 +780,18 @@ function generateAlerts(newMap,trackedImos){
 async function loadData(){
     if(S.isApiBusy)return;S.isApiBusy=true;el.refreshButton.disabled=true;
     try{
-        let ti,vi,si,pi;
-        try{[ti,vi,si,pi]=await Promise.all([fetchGitHubData(CONFIG.TRACKED_PATH,[]),fetchGitHubData(CONFIG.VESSELS_PATH,{}),fetchGitHubData(CONFIG.STATIC_CACHE_PATH,{}),fetchGitHubData(CONFIG.PORTS_PATH,{})]);}
-        catch{ti=await fetchGitHubData(CONFIG.TRACKED_PATH,[]);vi=await fetchGitHubData(CONFIG.VESSELS_PATH,{});si=await fetchGitHubData(CONFIG.STATIC_CACHE_PATH,{});pi=await fetchGitHubData(CONFIG.PORTS_PATH,{});}
+        // FIX: Simplified vessel data parsing — always Object.values, no shape guessing
+        const[ti,vi,si,pi]=await Promise.all([
+            fetchGitHubData(CONFIG.TRACKED_PATH,[]),
+            fetchGitHubData(CONFIG.VESSELS_PATH,{}),
+            fetchGitHubData(CONFIG.STATIC_CACHE_PATH,{}),
+            fetchGitHubData(CONFIG.PORTS_PATH,{})
+        ]);
         const tracked=(Array.isArray(ti.data)?ti.data:ti.data?.tracked_imos||[]).map(String);
         S.trackedImosCache=tracked;
-        let vl=[];if(Array.isArray(vi.data)){vl=vi.data;}else if(vi.data&&typeof vi.data==="object"){const f=Object.values(vi.data)[0];if(f?.imo)vl=Object.values(vi.data);else if(Array.isArray(f))Object.values(vi.data).forEach(a=>{if(Array.isArray(a))vl=vl.concat(a);});else vl=Object.values(vi.data);}
-        const nm=new Map();vl.filter(v=>v?.imo).forEach(v=>nm.set(String(v.imo),v));
+        // FIX: vessels_data.json is always {imo: {...}} — just use Object.values directly
+        const vl=vi.data&&typeof vi.data==="object"&&!Array.isArray(vi.data)?Object.values(vi.data).filter(v=>v?.imo):[];
+        const nm=new Map();vl.forEach(v=>nm.set(String(v.imo),v));
         S.vesselsDataMap=nm;S.staticCache=new Map(Object.entries(si.data||{}));S.portsData=pi.data||{};
         saveToLocalStorage();generateAlerts(nm,tracked);updateAlertBadge();
         updateSystemHealth(vi.lastMod,vl.length,vi.source);updateFleetKPI(tracked);
@@ -748,7 +802,7 @@ async function loadData(){
         updateStatus(`Fleet loaded — ${tracked.length} vessels`,"success");
     }catch(error){
         console.error("Load error:",error);
-        if(!loadCachedData()){updateStatus(`Load failed: ${error.message}`,"error");el.vesselsContainer.innerHTML=`<div class="empty-state"><div class="icon">⚠️</div><p style="color:var(--danger);">${error.message}</p><small>Check network or GitHub token</small></div>`;}
+        if(!loadCachedData()){updateStatus(`Load failed: ${error.message}`,"error");el.vesselsContainer.innerHTML=`<div class="empty-state"><div class="icon">⚠️</div><p style="color:var(--danger);">${escapeHtml(error.message)}</p><small>Check network or GitHub token</small></div>`;}
         else updateStatus("Showing cached data (offline)","warning");
     }finally{S.isApiBusy=false;el.refreshButton.disabled=false;hideLoading();}
 }
@@ -792,7 +846,7 @@ function updateMapMarkers(){
         const status=getVesselStatus(v),color=S.sanctionedImos.has(imo)?"#ff4500":(colors[status]||"#4e6a84"),cog=v.cog?Number(v.cog):0;
         const icon=L.divIcon({className:"",html:`<div style="transform:rotate(${cog}deg);width:22px;height:22px;"><svg viewBox="0 0 24 24" fill="${color}" style="filter:drop-shadow(0 0 6px ${color}90);"><path d="M12 2L5 20l7-3.5L19 20Z"/></svg></div>`,iconSize:[22,22],iconAnchor:[11,11],popupAnchor:[0,-12]});
         const age=formatSignalAge(v.last_pos_utc),isSanc=S.sanctionedImos.has(imo);
-        const popup=`<div style="font-family:sans-serif;min-width:185px;">${isSanc?`<div style="background:rgba(255,69,0,.15);border:1px solid rgba(255,69,0,.3);border-radius:5px;padding:4px 8px;margin-bottom:7px;font-size:.7rem;color:#ff4500;font-weight:700;">🚨 SANCTIONED</div>`:""}<div style="font-weight:700;font-size:.9rem;color:#fff;margin-bottom:3px;">${v.name||"IMO "+imo}</div><div style="font-size:.7rem;color:#94a3b8;margin-bottom:7px;">IMO ${imo} · ${v.flag||"—"}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:.74rem;"><div><span style="color:#64748b;">Status</span><br><strong style="color:${color};">${status}</strong></div><div><span style="color:#64748b;">Signal</span><br><strong>${age.ageText}</strong></div><div><span style="color:#64748b;">Speed</span><br><strong>${v.sog!=null?Number(v.sog).toFixed(1)+" kn":"—"}</strong></div><div><span style="color:#64748b;">Course</span><br><strong>${v.cog!=null?Number(v.cog).toFixed(0)+"°":"—"}</strong></div></div>${v.destination?`<div style="margin-top:6px;font-size:.7rem;"><span style="color:#64748b;">Dest: </span><strong>${v.destination}</strong></div>`:""}</div>`;
+        const popup=`<div style="font-family:sans-serif;min-width:185px;">${isSanc?`<div style="background:rgba(255,69,0,.15);border:1px solid rgba(255,69,0,.3);border-radius:5px;padding:4px 8px;margin-bottom:7px;font-size:.7rem;color:#ff4500;font-weight:700;">🚨 SANCTIONED</div>`:""}<div style="font-weight:700;font-size:.9rem;color:#fff;margin-bottom:3px;">${escapeHtml(v.name||"IMO "+imo)}</div><div style="font-size:.7rem;color:#94a3b8;margin-bottom:7px;">IMO ${imo} · ${escapeHtml(v.flag||"—")}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:.74rem;"><div><span style="color:#64748b;">Status</span><br><strong style="color:${color};">${status}</strong></div><div><span style="color:#64748b;">Signal</span><br><strong>${age.ageText}</strong></div><div><span style="color:#64748b;">Speed</span><br><strong>${v.sog!=null?Number(v.sog).toFixed(1)+" kn":"—"}</strong></div><div><span style="color:#64748b;">Course</span><br><strong>${v.cog!=null?Number(v.cog).toFixed(0)+"°":"—"}</strong></div></div>${v.destination?`<div style="margin-top:6px;font-size:.7rem;"><span style="color:#64748b;">Dest: </span><strong>${escapeHtml(v.destination)}</strong></div>`:""}</div>`;
         const marker=L.marker([Number(v.lat),Number(v.lon)],{icon}).bindPopup(popup);marker.addTo(S.mapInstance);S.mapMarkers.push(marker);
     }
 }
@@ -840,12 +894,11 @@ async function addIMO(){
     showLoading(`Adding IMO ${imo}...`);await updateTrackedImos(imo,true);
     pushAlert("added",imo,imo,`IMO ${imo} added to fleet tracking`);
     if(S.sanctionsLoaded&&S.sanctionedImos.has(imo)){const d=S.sanctionDetails.get(imo)||[];pushAlert("sanctioned",imo,imo,`🚨 SANCTIONED VESSEL added: IMO ${imo} on ${[...new Set(d.map(x=>x.list))].join(", ")||"sanctions list"}`);}
-    // Ensure static cache is always written when a vessel is confirmed added
     if(S.staticCache.has(imo)){
         updateStaticCache(imo,S.staticCache.get(imo)).catch(e=>console.error("Static cache on add:",e));
-    } else {
-        // No local data yet — fetch and write
-        (async()=>{try{let vd=null;for(const ep of[`${CONFIG.RENDER_API}/vessel-full/${imo}`,`${CONFIG.RENDER_API}/vessel/${imo}`]){try{const r=await fetchWithTimeout(ep,{},5000);if(r.ok){vd=await r.json();break;}}catch{}}if(vd&&vd.found!==false)await updateStaticCache(imo,vd);}catch(e){console.error("Static cache lookup on add:",e);}})();
+    }else{
+        // FIX: Use Worker proxy for static cache lookup on add
+        (async()=>{try{const vd=await lookupVesselViaWorker(imo);if(vd&&vd.found!==false)await updateStaticCache(imo,vd);}catch(e){console.error("Static cache lookup on add:",e);}})();
     }
     hideLoading();
 }
@@ -895,19 +948,23 @@ function renderVessels(tracked){
         const sc={UNDERWAY:"underway","AT PORT":"at_port","AT ANCHOR":"at_anchor",STALLED:"stalled"}[status]||"";
         const tc={UNDERWAY:"status-underway","AT PORT":"status-at_port","AT ANCHOR":"status-at_anchor",STALLED:"status-stalled","DATA PENDING":"status-unknown"}[status]||"status-unknown";
         const fc=getFlagCode(v.flag);
-        const fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" class="flag-icon" alt="${v.flag||""}">`:`<div class="flag-placeholder">🏴</div>`;
+        const fh=fc?`<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" class="flag-icon" alt="${escapeHtml(v.flag||"")}">`:`<div class="flag-placeholder">🏴</div>`;
         const loaHtml=v.length_overall_m?`<span class="vessel-loa">${Number(v.length_overall_m).toFixed(0)}m${v.draught_m?" / "+v.draught_m:""}</span>`:"";
         const np=v.nearest_port_name||v.nearest_port,di=np?getPortDepthInfo(np):null;
         const depthH=di?`<span class="tag depth">⚓ ${di.anchor}</span><span class="tag depth">🏭 ${di.pier}</span>`:"";
         const compat=getPortCompatibility(v.draught_m);
         const etaR=formatEtaCountdown(v.eta_utc);
-        const sancBanner=sanc?`<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div class="sanction-banner-body"><div class="sanction-banner-title">SANCTIONED — ${[...new Set((S.sanctionDetails.get(imo)||[]).map(d=>d.list))].join(" · ")||"Sanctions List"}</div><div class="sanction-banner-detail">${(S.sanctionDetails.get(imo)||[])[0]?.name||"Appears on OFAC, UN, and/or EU sanctions lists."}</div></div></div>`:"";
-        const compatH=compat?`<div class="section-divider"></div><div class="section-mini-title">Port Compatibility · Draught ${compat[0].draught}m</div><div class="compat-grid">${compat.map(p=>`<div class="compat-port">${CI[p.status]||CI.unknown}<div><div class="compat-port-name">${p.name}</div><div class="compat-port-depth">${p.pierDepth!=null?"Pier "+p.pierDepth+"m / Anch "+p.anchorDepth+"m":"No depth data"}</div></div></div>`).join("")}</div>`:"";
-        const notesH=`<div class="section-divider"></div><div class="section-mini-title">📋 Notes <span id="notes-saved-${imo}" class="notes-saved">✓ Saved</span></div><textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="Agent contact, cargo, special instructions...">${getNotes(imo)}</textarea>`;
-        const staticH=`<div class="expanded-grid"><div class="exp-item"><div class="exp-label">Ship Type</div><div class="exp-val">${v.ship_type||"—"}</div></div><div class="exp-item"><div class="exp-label">DWT</div><div class="exp-val">${v.deadweight_t?formatNumber(Number(v.deadweight_t)/1000)+"k t":"—"}</div></div><div class="exp-item"><div class="exp-label">Gross Tonnage</div><div class="exp-val">${v.gross_tonnage?Number(v.gross_tonnage).toLocaleString()+" t":"—"}</div></div><div class="exp-item"><div class="exp-label">Built</div><div class="exp-val">${v.year_of_build||"—"}</div></div><div class="exp-item"><div class="exp-label">Length</div><div class="exp-val">${v.length_overall_m?Number(v.length_overall_m).toFixed(1)+" m":"—"}</div></div><div class="exp-item"><div class="exp-label">Beam</div><div class="exp-val">${v.beam_m?Number(v.beam_m).toFixed(1)+" m":"—"}</div></div><div class="exp-item"><div class="exp-label">MMSI</div><div class="exp-val">${v.mmsi||"—"}</div></div><div class="exp-item"><div class="exp-label">AIS Source</div><div class="exp-val">${v.ais_source||"—"}</div></div></div>${compatH}${notesH}`;
+        // FIX: escapeHtml applied to all vessel-derived strings in innerHTML
+        const vName=escapeHtml(v.name||"Loading...");
+        const vDest=escapeHtml(v.destination||"—");
+        const vFlag=escapeHtml(v.flag||"—");
+        const sancBanner=sanc?`<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div class="sanction-banner-body"><div class="sanction-banner-title">SANCTIONED — ${escapeHtml([...new Set((S.sanctionDetails.get(imo)||[]).map(d=>d.list))].join(" · ")||"Sanctions List")}</div><div class="sanction-banner-detail">${escapeHtml((S.sanctionDetails.get(imo)||[])[0]?.name||"Appears on OFAC, UN, and/or EU sanctions lists.")}</div></div></div>`:"";
+        const compatH=compat?`<div class="section-divider"></div><div class="section-mini-title">Port Compatibility · Draught ${compat[0].draught}m</div><div class="compat-grid">${compat.map(p=>`<div class="compat-port">${CI[p.status]||CI.unknown}<div><div class="compat-port-name">${escapeHtml(p.name)}</div><div class="compat-port-depth">${p.pierDepth!=null?"Pier "+p.pierDepth+"m / Anch "+p.anchorDepth+"m":"No depth data"}</div></div></div>`).join("")}</div>`:"";
+        const notesH=`<div class="section-divider"></div><div class="section-mini-title">📋 Notes <span id="notes-saved-${imo}" class="notes-saved">✓ Saved</span></div><textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="Agent contact, cargo, special instructions...">${escapeHtml(getNotes(imo))}</textarea>`;
+        const staticH=`<div class="expanded-grid"><div class="exp-item"><div class="exp-label">Ship Type</div><div class="exp-val">${escapeHtml(v.ship_type||"—")}</div></div><div class="exp-item"><div class="exp-label">DWT</div><div class="exp-val">${v.deadweight_t?formatNumber(Number(v.deadweight_t)/1000)+"k t":"—"}</div></div><div class="exp-item"><div class="exp-label">Gross Tonnage</div><div class="exp-val">${v.gross_tonnage?Number(v.gross_tonnage).toLocaleString()+" t":"—"}</div></div><div class="exp-item"><div class="exp-label">Built</div><div class="exp-val">${escapeHtml(v.year_of_build||"—")}</div></div><div class="exp-item"><div class="exp-label">Length</div><div class="exp-val">${v.length_overall_m?Number(v.length_overall_m).toFixed(1)+" m":"—"}</div></div><div class="exp-item"><div class="exp-label">Beam</div><div class="exp-val">${v.beam_m?Number(v.beam_m).toFixed(1)+" m":"—"}</div></div><div class="exp-item"><div class="exp-label">MMSI</div><div class="exp-val">${escapeHtml(v.mmsi||"—")}</div></div><div class="exp-item"><div class="exp-label">AIS Source</div><div class="exp-val">${escapeHtml(v.ais_source||"—")}</div></div></div>${compatH}${notesH}`;
         const card=document.createElement("div");
         card.className=`vessel-card ${sanc?"sanctioned":prio?"priority":sc}`;
-        card.innerHTML=`${sancBanner}<div class="vessel-card-inner">${prio&&!sanc?`<div class="priority-indicator"></div>`:""}<div class="vessel-main" onclick="toggleDetails('${imo}')"><div class="vessel-top"><div><div class="vessel-name-block">${fh}<span class="vessel-name">${v.name||"Loading..."}</span>${sanc?`<span class="tag sanction-tag">🚨 Sanctioned</span>`:prio?`<span style="font-size:.82rem;">🚩</span>`:""} ${loaHtml}</div><div class="vessel-imo">IMO ${imo}</div></div><span class="tag ${tc}">${status}</span></div>${isPending?`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>Waiting for data...</div>`:`<div class="vessel-meta"><div class="meta-row"><span class="meta-label">Signal</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div><div class="meta-row"><span class="meta-label">Dest.</span><span class="meta-val">${v.destination||"—"}</span></div><div class="meta-row"><span class="meta-label">Position</span><span class="meta-val"><span class="tag position">${v.lat!=null?Number(v.lat).toFixed(3):"—"}, ${v.lon!=null?Number(v.lon).toFixed(3):"—"}</span></span></div><div class="meta-row"><span class="meta-label">ETA</span><span class="meta-val">${etaR?`<span class="eta-countdown ${etaR.cls}" data-eta="${v.eta_utc||""}">${etaR.text}</span>`:(formatLocalTime(v.eta_utc)||"—")}</span></div></div><div class="tag-row">${v.sog!=null?`<span class="tag speed">⚡ ${Number(v.sog).toFixed(1)} kn</span>`:""}${v.cog!=null?`<span class="tag">🧭 ${Number(v.cog).toFixed(0)}°</span>`:""}${np?`<span class="tag">🏝 ${np}${v.nearest_distance_nm?" "+Number(v.nearest_distance_nm).toFixed(0)+" nm":""}</span>`:""}${depthH}${v.destination_distance_nm?`<span class="tag distance">🎯 ${Number(v.destination_distance_nm).toFixed(0)} nm</span>`:""}<div id="weather-${imo}" style="display:contents;"></div></div><div class="hint-text">Tap to expand · ${v.flag||"—"}</div>`}</div></div><div id="details-${imo}" class="vessel-expanded">${staticH}</div><div class="vessel-footer"><span class="vessel-footer-meta">AIS: ${v.ais_source||"—"} · ${ageData.ageText}</span><div class="vessel-footer-actions"><button class="${prio?"urgent-btn":"ghost"}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio?"🚩 Priority":"⚑ Flag"}</button><button class="danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">Remove</button></div></div>`;
+        card.innerHTML=`${sancBanner}<div class="vessel-card-inner">${prio&&!sanc?`<div class="priority-indicator"></div>`:""}<div class="vessel-main" onclick="toggleDetails('${imo}')"><div class="vessel-top"><div><div class="vessel-name-block">${fh}<span class="vessel-name">${vName}</span>${sanc?`<span class="tag sanction-tag">🚨 Sanctioned</span>`:prio?`<span style="font-size:.82rem;">🚩</span>`:""} ${loaHtml}</div><div class="vessel-imo">IMO ${imo}</div></div><span class="tag ${tc}">${status}</span></div>${isPending?`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>Waiting for data...</div>`:`<div class="vessel-meta"><div class="meta-row"><span class="meta-label">Signal</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div><div class="meta-row"><span class="meta-label">Dest.</span><span class="meta-val">${vDest}</span></div><div class="meta-row"><span class="meta-label">Position</span><span class="meta-val"><span class="tag position">${v.lat!=null?Number(v.lat).toFixed(3):"—"}, ${v.lon!=null?Number(v.lon).toFixed(3):"—"}</span></span></div><div class="meta-row"><span class="meta-label">ETA</span><span class="meta-val">${etaR?`<span class="eta-countdown ${etaR.cls}" data-eta="${escapeHtml(v.eta_utc||"")}">${etaR.text}</span>`:(formatLocalTime(v.eta_utc)||"—")}</span></div></div><div class="tag-row">${v.sog!=null?`<span class="tag speed">⚡ ${Number(v.sog).toFixed(1)} kn</span>`:""}${v.cog!=null?`<span class="tag">🧭 ${Number(v.cog).toFixed(0)}°</span>`:""}${np?`<span class="tag">🏝 ${escapeHtml(np)}${v.nearest_distance_nm?" "+Number(v.nearest_distance_nm).toFixed(0)+" nm":""}</span>`:""}${depthH}${v.destination_distance_nm?`<span class="tag distance">🎯 ${Number(v.destination_distance_nm).toFixed(0)} nm</span>`:""}<div id="weather-${imo}" style="display:contents;"></div></div><div class="hint-text">Tap to expand · ${vFlag}</div>`}</div></div><div id="details-${imo}" class="vessel-expanded">${staticH}</div><div class="vessel-footer"><span class="vessel-footer-meta">AIS: ${escapeHtml(v.ais_source||"—")} · ${ageData.ageText}</span><div class="vessel-footer-actions"><button class="${prio?"urgent-btn":"ghost"}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio?"🚩 Priority":"⑁ Flag"}</button><button class="danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">Remove</button></div></div>`;
         el.vesselsContainer.appendChild(card);
         if(v.lat!=null&&v.lon!=null)fetchAndRenderWeather(imo,v.lat,v.lon);
     }catch(err){console.warn(`Card render error IMO ${imo}:`,err);}});
@@ -916,8 +973,7 @@ function renderVessels(tracked){
 
 // INIT
 function init(){
-    console.log("🚢 VesselTracker v5.4");
-    console.log("🔒 VesselTracker v5.4 — token-free client");
+    console.log("🚢 VesselTracker v5.5");
     if(el.sortSelect)el.sortSelect.value=S.currentSortKey;
     renderAlerts();updateAlertBadge();loadCachedData();loadData();
     S.refreshInterval=setInterval(loadData,CONFIG.REFRESH_INTERVAL);
@@ -934,11 +990,6 @@ function init(){
     });
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
-
-// PWA Service Worker Registration
-if('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('data:application/javascript,self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("fetch",e=>e.respondWith(fetch(e.request).catch(()=>new Response("Offline"))))').catch(()=>{});
-}
 </script>
 </body>
 </html>
