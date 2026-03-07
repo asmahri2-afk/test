@@ -71,24 +71,24 @@ const translations = {
 // i18n helper
 class i18n {
     static currentLang = localStorage.getItem('lang') || 'EN';
-    
+
     static get(key) {
         return translations[this.currentLang]?.[key] || key;
     }
-    
+
     static setLang(lang) {
         this.currentLang = lang;
         localStorage.setItem('lang', lang);
         this.updateDOM();
     }
-    
+
     static updateDOM() {
         document.querySelectorAll('[data-i18n]').forEach(el => {
             const key = el.getAttribute('data-i18n');
             el.textContent = this.get(key);
         });
     }
-    
+
     static init() {
         this.updateDOM();
     }
