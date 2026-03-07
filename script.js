@@ -1,13 +1,19 @@
 // CONFIG
 const CONFIG = {
-    VESSEL_API: 'https://api.vesseltracker.com/vessel',
-    DATA_API: 'https://api.vesseltracker.com/data/vessel_data.json',
+    USERNAME: 'asmahri2-afk',
+    REPO: 'VesselTracker',
+    BRANCH: 'main',
+    RENDER_API: 'https://vessel-api-s85s.onrender.com',
     WEATHER_API: 'https://api.open-meteo.com/v1/forecast',
-    SANCTIONS_API: 'https://api.vesseltracker.com/sanctions',
-    REFRESH_INTERVAL: 60000,
-    CACHE_KEY: 'vessel_data_cache',
-    LAST_MODIFIED_KEY: 'vessel_data_modified',
+    VESSELS_PATH: 'data/vessels_data.json',
+    TRACKED_PATH: 'data/tracked_imos.json',
+    PORTS_PATH: 'data/ports.json',
+    SANCTIONS_URL: 'https://raw.githubusercontent.com/asmahri2-afk/VesselTracker/main/data/sanctioned_imos.json',
+    STALE_THRESHOLD_MS: 6 * 3600000,
+    CRITICAL_THRESHOLD_MS: 24 * 3600000,
+    REFRESH_INTERVAL: 5 * 60000,
 };
+CONFIG.RAW_BASE = `https://raw.githubusercontent.com/${CONFIG.USERNAME}/${CONFIG.REPO}/${CONFIG.BRANCH}/`;
 
 // GLOBAL STATE
 const S = {
@@ -83,10 +89,20 @@ function validateIMO(imo) {
     return (10 - (checksum % 10)) % 10 === digits[6];
 }
 
+// Parse custom date format: "Mar 5, 2026 09:49 UTC"
+function parseCustomDate(dateStr) {
+    if (!dateStr) return null;
+    try {
+        return new Date(dateStr);
+    } catch {
+        return null;
+    }
+}
+
 function formatLocalTime(utcStr) {
     if (!utcStr) return null;
     try {
-        const date = new Date(utcStr);
+        const date = parseCustomDate(utcStr) || new Date(utcStr);
         const locale = i18n.currentLang === 'FR' ? 'fr-FR' : 'en-US';
         return date.toLocaleString(locale, {
             month: 'short',
@@ -101,39 +117,42 @@ function formatLocalTime(utcStr) {
 
 function formatSignalAge(utcStr) {
     if (!utcStr) return { ageText: '—', ageClass: '', rawAgeMs: Infinity };
-    const now = new Date();
-    const lastPos = new Date(utcStr);
-    const diffMs = now - lastPos;
-    const diffHours = diffMs / (1000 * 60 * 60);
-    const diffDays = diffHours / 24;
+    try {
+        const lastPos = parseCustomDate(utcStr) || new Date(utcStr);
+        if (isNaN(lastPos.getTime())) {
+            return { ageText: '—', ageClass: '', rawAgeMs: Infinity };
+        }
+        const now = new Date();
+        const diffMs = now - lastPos;
+        const diffHours = diffMs / (1000 * 60 * 60);
 
-    let ageText, ageClass;
-    if (diffHours < 0.5) {
-        ageText = 'Now';
-        ageClass = 'fresh';
-    } else if (diffHours < 1) {
-        ageText = Math.round(diffHours * 60) + ' min';
-        ageClass = 'fresh';
-    } else if (diffHours < 6) {
-        ageText = Math.round(diffHours) + ' h';
-        ageClass = 'recent';
-    } else if (diffHours < 24) {
-        ageText = Math.round(diffHours) + ' h';
-        ageClass = 'aged';
-    } else if (diffDays < 7) {
-        ageText = Math.round(diffDays) + ' d';
-        ageClass = 'stale';
-    } else {
-        ageText = Math.round(diffDays) + ' d';
-        ageClass = 'very-stale';
+        let ageText, ageClass;
+        if (diffHours < 0.5) {
+            ageText = 'Now';
+            ageClass = 'fresh';
+        } else if (diffHours < 1) {
+            ageText = Math.round(diffHours * 60) + ' min';
+            ageClass = 'fresh';
+        } else if (diffHours < 6) {
+            ageText = Math.round(diffHours) + ' h';
+            ageClass = 'recent';
+        } else if (diffHours < 24) {
+            ageText = Math.round(diffHours) + ' h';
+            ageClass = 'aged';
+        } else {
+            ageText = Math.round(diffHours / 24) + ' d';
+            ageClass = 'stale';
+        }
+        return { ageText, ageClass, rawAgeMs: diffMs };
+    } catch {
+        return { ageText: '—', ageClass: '', rawAgeMs: Infinity };
     }
-    return { ageText, ageClass, rawAgeMs: diffMs };
 }
 
 function formatEtaCountdown(etaStr) {
     if (!etaStr) return null;
     try {
-        const eta = new Date(etaStr);
+        const eta = parseCustomDate(etaStr) || new Date(etaStr);
         const now = new Date();
         const diffMs = eta - now;
         if (diffMs < 0) return { text: 'Passed', cls: 'passed' };
@@ -154,12 +173,12 @@ function formatEtaCountdown(etaStr) {
 
 function getVesselStatus(vessel) {
     if (!vessel.name) return 'DATA PENDING';
-    const sog = vessel.sog;
-    if (sog === null || sog === undefined) return 'DATA PENDING';
+    const sog = parseFloat(vessel.sog);
+    if (isNaN(sog) || sog === null) return 'DATA PENDING';
     if (sog > 0.5) return 'UNDERWAY';
-    if (vessel.port_name || vessel.nearest_port_name) return 'AT PORT';
+    if (vessel.destination_port || vessel.nearest_port) return 'AT PORT';
     const ageData = formatSignalAge(vessel.last_pos_utc);
-    if (ageData.rawAgeMs > 86400000) return 'STALLED'; // > 24 hours
+    if (ageData.rawAgeMs > 86400000) return 'STALLED';
     return 'AT ANCHOR';
 }
 
@@ -172,34 +191,6 @@ function getFlagCode(country) {
         'Netherlands': 'NL', 'India': 'IN', 'Mexico': 'MX', 'Russia': 'RU'
     };
     return flagMap[country] || null;
-}
-
-function getPortDepthInfo(portName) {
-    const depths = {
-        'Rotterdam': { pier: 15.5, anchor: 12 },
-        'Singapore': { pier: 15, anchor: 14 },
-        'Shanghai': { pier: 16, anchor: 13 },
-        'Dubai': { pier: 16.5, anchor: 14 },
-        'Hamburg': { pier: 14.5, anchor: 11 },
-        'Antwerp': { pier: 14, anchor: 11.5 },
-        'Los Angeles': { pier: 15, anchor: 13 },
-        'Long Beach': { pier: 15.5, anchor: 14 },
-    };
-    return depths[portName] || null;
-}
-
-function getPortCompatibility(draughtM) {
-    if (!draughtM) return null;
-    const draught = Number(draughtM);
-    const ports = [
-        { name: 'Rotterdam', pierDepth: 15.5, anchorDepth: 12, draught },
-        { name: 'Singapore', pierDepth: 15, anchorDepth: 14, draught },
-        { name: 'Shanghai', pierDepth: 16, anchorDepth: 13, draught },
-    ];
-    return ports.map(p => ({
-        ...p,
-        status: draught > p.pierDepth ? 'anchor-only' : (draught > p.anchorDepth ? 'marginal' : 'ok')
-    }));
 }
 
 function isPriority(imo) {
@@ -219,29 +210,6 @@ function loadTrackedVessels() {
     if (priority) S.priorityImos = new Set(JSON.parse(priority));
 }
 
-function saveCachedData() {
-    const cache = {
-        data: S.vessel_data,
-        timestamp: new Date().toISOString(),
-        modified: S.lastDataModified,
-    };
-    localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(cache));
-}
-
-function loadCachedData() {
-    const cached = localStorage.getItem(CONFIG.CACHE_KEY);
-    if (cached) {
-        try {
-            const { data, modified } = JSON.parse(cached);
-            S.vessel_data = data || [];
-            S.lastDataModified = modified;
-            updateVesselDataMap();
-        } catch (err) {
-            console.warn('Cache load error:', err);
-        }
-    }
-}
-
 function getNotes(imo) {
     return localStorage.getItem(`notes_${imo}`) || '';
 }
@@ -251,26 +219,44 @@ function saveNotes(imo, text) {
 }
 
 // DATA LOADING
+async function fetchGitHubData(path) {
+    const url = CONFIG.RAW_BASE + path + `?_=${Date.now()}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`GitHub fetch failed: ${response.status}`);
+    return await response.json();
+}
+
 async function loadData() {
     try {
-        // Try to get Last-Modified header
-        const response = await fetch(CONFIG.DATA_API);
-        if (!response.ok) throw new Error('Data load failed');
+        console.log('🔄 Loading data from GitHub...');
         
-        const lastModified = response.headers.get('Last-Modified') || response.headers.get('X-Last-Modified');
-        if (lastModified) {
-            S.lastDataModified = new Date(lastModified);
-        }
-        
-        const data = await response.json();
-        S.vessel_data = data.vessels || [];
+        // Fetch all data in parallel
+        const [trackedData, vesselData] = await Promise.all([
+            fetchGitHubData(CONFIG.TRACKED_PATH),
+            fetchGitHubData(CONFIG.VESSELS_PATH),
+        ]);
+
+        // Parse tracked IMOs (array format)
+        const tracked = Array.isArray(trackedData) ? trackedData : [];
+        S.trackedImos = new Set(tracked.map(String));
+        console.log(`✅ Loaded ${S.trackedImos.size} tracked IMOs`);
+
+        // Parse vessel data (object format with IMO keys)
+        S.vessel_data = Object.values(vesselData || {});
         updateVesselDataMap();
-        saveCachedData();
+        console.log(`✅ Loaded ${S.vessel_data.length} vessels in database`);
+
+        // Get last modified from response headers or use current time
+        S.lastDataModified = new Date();
+        updateLastModifiedDisplay();
+
         updateKPIs();
         renderVessels(Array.from(S.trackedImos));
         updateMap();
     } catch (err) {
-        console.error('Load error:', err);
+        console.error('❌ Load error:', err);
+        // Try to load from cache on error
+        alert('Error loading data: ' + err.message);
     }
 }
 
@@ -451,13 +437,6 @@ function renderVessels(tracked) {
     }
 
     el.vesselsContainer.innerHTML = '';
-    const CI = {
-        ok: `<span class="compat-ok">✔</span>`,
-        marginal: `<span class="compat-warn">⚠</span>`,
-        'anchor-only': `<span class="compat-warn">⚓</span>`,
-        incompatible: `<span class="compat-no">✗</span>`,
-        unknown: `<span class="compat-unk">?</span>`,
-    };
 
     items.forEach(({ imo, v, status, ageData, isPending, prio, sanc }) => {
         try {
@@ -467,7 +446,7 @@ function renderVessels(tracked) {
             const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" class="flag-icon" alt="${escapeHtml(v.flag || '')}" />` : `<div class="flag-placeholder">🏴</div>`;
 
             const vName = escapeHtml(v.name || 'Loading...');
-            const vDest = escapeHtml(v.destination || '—');
+            const vDest = escapeHtml(v.destination_port || v.destination || '—');
             const vFlag = escapeHtml(v.flag || '—');
 
             const loaHtml = v.length_overall_m ? `<span class="vessel-loa">${Number(v.length_overall_m).toFixed(0)}m</span>` : '';
@@ -488,7 +467,7 @@ function renderVessels(tracked) {
                                 </div>
                                 <div class="vessel-imo">IMO ${imo}</div>
                             </div>
-                            <span class="tag ${tc}">${i18n.get(status.toLowerCase().replace(/\s+/g, ''))}</span>
+                            <span class="tag ${tc}">${status}</span>
                         </div>
                         ${isPending ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;">
                             <div class="spinner" style="width:14px;height:14px;margin:0;"></div>
@@ -502,6 +481,7 @@ function renderVessels(tracked) {
                             <div class="tag-row">
                                 ${v.sog != null ? `<span class="tag speed">⚡ ${Number(v.sog).toFixed(1)} kn</span>` : ''}
                                 ${v.cog != null ? `<span class="tag">🧭 ${Number(v.cog).toFixed(0)}°</span>` : ''}
+                                ${v.nearest_port ? `<span class="tag">🏝 ${escapeHtml(v.nearest_port)}${v.nearest_distance_nm ? ' ' + Number(v.nearest_distance_nm).toFixed(0) + ' nm' : ''}</span>` : ''}
                             </div>
                             <div class="hint-text">Tap to expand · ${vFlag}</div>
                         `}
@@ -515,7 +495,7 @@ function renderVessels(tracked) {
                         </div>
                         <div class="exp-item">
                             <div class="exp-label">${i18n.currentLang === 'FR' ? 'TJB' : 'Gross Tonnage'}</div>
-                            <div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() + ' t' : '—'}</div>
+                            <div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() : '—'}</div>
                         </div>
                         <div class="exp-item">
                             <div class="exp-label">${i18n.currentLang === 'FR' ? 'Construit' : 'Built'}</div>
@@ -531,9 +511,9 @@ function renderVessels(tracked) {
                     <textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="${i18n.currentLang === 'FR' ? 'Contact agent, cargo, instructions...' : 'Agent contact, cargo, special instructions...'}">${escapeHtml(getNotes(imo))}</textarea>
                 </div>
                 <div class="vessel-footer">
-                    <span class="vessel-footer-meta">AIS: ${escapeHtml(v.ais_source || '—')} · ${ageData.ageText}</span>
+                    <span class="vessel-footer-meta">AIS: unknown · ${ageData.ageText}</span>
                     <div class="vessel-footer-actions">
-                        <button class="${prio ? 'urgent-btn' : 'ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? '🚩 ' + (i18n.currentLang === 'FR' ? 'Priorité' : 'Priority') : '⑁ ' + i18n.get('flag')}</button>
+                        <button class="${prio ? 'urgent-btn' : 'ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? '🚩 ' + (i18n.currentLang === 'FR' ? 'Priorité' : 'Priority') : '⑁ Flag'}</button>
                         <button class="danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">${i18n.get('remove')}</button>
                     </div>
                 </div>
@@ -624,7 +604,6 @@ function setupEventListeners() {
         el.confirmModal.style.display = 'none';
     });
 
-    // Language toggle
     el.langToggle.addEventListener('click', () => {
         const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
         i18n.setLang(newLang);
@@ -633,7 +612,6 @@ function setupEventListeners() {
         updateMap();
     });
 
-    // Map toggle
     el.mapToggle.addEventListener('click', () => {
         const isVisible = el.mapPanel.classList.contains('visible');
         if (isVisible) {
@@ -650,7 +628,6 @@ function setupEventListeners() {
         }
     });
 
-    // Mobile filter
     el.fabFilter.addEventListener('click', () => {
         el.filterSection.classList.add('visible');
     });
@@ -665,7 +642,7 @@ function setupEventListeners() {
         el.headerClock.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     }, 1000);
 
-    // Update last modified display every 30s
+    // Update last modified display
     setInterval(updateLastModifiedDisplay, 30000);
 }
 
@@ -674,22 +651,18 @@ function init() {
     console.log('🚢 VesselTracker v5.5');
     i18n.init();
     loadTrackedVessels();
-    loadCachedData();
     setupEventListeners();
     el.sortSelect.value = S.currentSortKey;
-    renderVessels(Array.from(S.trackedImos));
     loadData();
     updateLastModifiedDisplay();
     S.refreshInterval = setInterval(loadData, CONFIG.REFRESH_INTERVAL);
 
-    // Hide filter on desktop
     if (window.innerWidth > 640) {
         el.fabFilter.style.display = 'none';
     } else {
         el.filterSection.classList.remove('visible');
     }
 
-    // Add responsive listener
     window.addEventListener('resize', () => {
         if (window.innerWidth > 640) {
             el.fabFilter.style.display = 'none';
