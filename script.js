@@ -508,11 +508,31 @@ async function fetchGitHubData(path, fallback = null) {
     const url = `${CONFIG.RAW_BASE}${path}?_=${Date.now()}`;
     const res = await fetchWithTimeout(url, { cache: 'no-cache' }, 10000);
     if (!res.ok) throw new Error(`GitHub ${res.status}: ${path}`);
-    // Read the actual file modification time from GitHub's Last-Modified header
-    const lastModHeader = res.headers.get('Last-Modified');
-    const lastMod = lastModHeader ? new Date(lastModHeader).getTime() : Date.now();
-    try { const data = await res.json(); return { data, sha: null, lastMod, source: 'raw' }; }
-    catch { return { data: fallback, sha: null, lastMod, source: 'error' }; }
+    try { const data = await res.json(); return { data, sha: null, source: 'raw' }; }
+    catch { return { data: fallback, sha: null, source: 'error' }; }
+}
+
+// Fetch the real last-commit timestamp for a file via the GitHub Commits API.
+// raw.githubusercontent.com is CDN-cached so its Last-Modified header is unreliable.
+async function fetchFileLastCommit(path) {
+    const url = `https://api.github.com/repos/${CONFIG.USERNAME}/${CONFIG.REPO}/commits?path=${encodeURIComponent(path)}&per_page=1`;
+    try {
+        const res = await fetchWithTimeout(url, { headers: { Accept: 'application/vnd.github+json' } }, 8000);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const dateStr = data?.[0]?.commit?.committer?.date || data?.[0]?.commit?.author?.date;
+        return dateStr ? new Date(dateStr) : null;
+    } catch { return null; }
+}
+
+// Update both KPI "Updated" cell and card footer label, respecting current language.
+function updateLastModified(date) {
+    if (!date) return;
+    S.lastDataModified = date;
+    const locale = i18n.currentLang === 'FR' ? 'fr-FR' : 'en-US';
+    const fmt = date.toLocaleString(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (el.lastUpdatedTime) el.lastUpdatedTime.textContent = fmt;
+    if (el.lastUpdatedLabel) el.lastUpdatedLabel.textContent = `${i18n.get('lastUpdate')}: ${fmt}`;
 }
 
 async function ghPut(path, data, sha, message) {
@@ -573,23 +593,22 @@ async function loadData() {
         S.vesselsDataMap = nm;
         S.staticCache = new Map(Object.entries(si.data || {}));
         S.portsData = pi.data || {};
-        // Use the actual GitHub Last-Modified time (real data freshness), fall back to now
-        S.lastDataModified = vi.lastMod ? new Date(vi.lastMod) : new Date();
+        S.lastDataModified = new Date(); // placeholder until commit API responds
         saveToLocalStorage();
         generateAlerts(nm, tracked);
         updateAlertBadge();
-        updateSystemHealth(vi.lastMod, vl.length, vi.source);
+        updateSystemHealth(Date.now(), vl.length, vi.source);
         updateFleetKPI(tracked);
         if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} vessel${tracked.length !== 1 ? 's' : ''} tracked`;
         if (el.dataStats) el.dataStats.textContent = `${vl.length} in database · ${vi.source}`;
-        const _locale = (typeof i18n !== 'undefined' && i18n.currentLang === 'FR') ? 'fr-FR' : 'en-US';
-        const _fmtOpts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-        const _fmtTime = S.lastDataModified.toLocaleString(_locale, _fmtOpts);
-        if (el.lastUpdatedTime) el.lastUpdatedTime.textContent = _fmtTime;
-        if (el.lastUpdatedLabel) el.lastUpdatedLabel.textContent = `Last modified: ${_fmtTime}`;
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
         updateStatus(`Fleet loaded — ${tracked.length} vessels`, 'success');
+        // Fetch real last-commit time from GitHub API (non-blocking, updates UI when ready)
+        fetchFileLastCommit(CONFIG.VESSELS_PATH).then(date => {
+            updateLastModified(date || new Date());
+            if (date) updateSystemHealth(date.getTime(), vl.length, vi.source);
+        });
     } catch (err) {
         console.error('Load error:', err);
         if (!loadCachedData()) {
@@ -1132,12 +1151,17 @@ function initPullToRefresh() {
 function init() {
     console.log('🚢 VesselTracker v5.5 — Final');
 
-    // i18n shim: only install AFTER DOMContentLoaded so translations.js gets
-    // first chance to define window.i18n. If it didn't, provide a safe no-op.
+    // i18n: translations.js already called i18n.init() via its own DOMContentLoaded.
+    // Only install a shim if translations.js failed to load.
     if (typeof i18n === 'undefined') {
-        window.i18n = { currentLang: 'EN', init() { }, setLang(l) { this.currentLang = l; } };
+        window.i18n = {
+            currentLang: localStorage.getItem('lang') || 'EN',
+            get(key) { return key; },
+            setLang(l) { this.currentLang = l; localStorage.setItem('lang', l); },
+            updateDOM() { },
+            init() { }
+        };
     }
-    try { if (i18n.init) i18n.init(); } catch (e) { console.warn('i18n.init failed:', e); }
 
     // Sort selects
     if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
@@ -1210,10 +1234,13 @@ function init() {
     // Language toggle
     const langToggle = document.getElementById('langToggle');
     if (langToggle) {
+        // Set initial button label to reflect the *other* language (what you'd switch to)
+        langToggle.textContent = i18n.currentLang === 'FR' ? 'EN' : 'FR';
         langToggle.addEventListener('click', () => {
             const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
-            i18n.setLang(newLang);
+            i18n.setLang(newLang);               // calls updateDOM() for all data-i18n elements
             langToggle.textContent = newLang === 'FR' ? 'EN' : 'FR';
+            if (S.lastDataModified) updateLastModified(S.lastDataModified); // re-render date in new locale
             renderVessels(S.trackedImosCache);
         });
     }
