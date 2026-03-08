@@ -2,58 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>VesselTracker - Maritime Operations</title>
+    <title>VesselTracker v5.5 — Maritime Operations</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="Real‑time maritime vessel tracking and monitoring system" />
+    <meta name="description" content="Real-time maritime vessel tracking and monitoring system" />
     <meta name="theme-color" content="#020c1a" />
+    
     <link rel="manifest" href="manifest.json" />
-    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23020c1a' width='180' height='180'/><circle cx='90' cy='90' r='54' fill='%230ea5e9'/><path d='M90 36 L70 90 L110 90 Z' fill='%23fff'/></svg>" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23020c1a' width='192' height='192'/><circle cx='96' cy='96' r='60' fill='%230ea5e9'/><path d='M96 36 L76 96 L116 96 Z' fill='%23fff'/></svg>" />
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+    
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-
-    <!-- LOADING OVERLAY -->
-    <div id="loadingOverlay" class="loading-overlay hidden">
-        <div class="spinner"></div>
-        <p id="loadingText" style="margin-top:12px;font-family:var(--mono);color:var(--text-soft);" data-i18n="loading">Loading...</p>
-    </div>
-
-    <!-- CONFIRM MODAL -->
-    <div id="confirmModal" class="modal-backdrop hidden">
-        <div class="modal-content">
-            <div class="modal-header"><h2 data-i18n="confirm">Confirm</h2></div>
-            <div class="modal-body" id="confirmText"></div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="confirmCancel" data-i18n="cancel">Cancel</button>
-                <button class="btn-danger" id="confirmOk" data-i18n="remove">Remove</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ALERT OVERLAY & PANEL -->
-    <div id="alertOverlay" class="alert-overlay"></div>
-    <div id="alertPanel" class="alert-panel">
-        <div class="alert-header">
-            <h2>🔔 <span data-i18n="alerts">Alerts</span></h2>
-            <div style="display:flex;gap:6px;">
-                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="markAllAlertsRead()" data-i18n="readAll">Read All</button>
-                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="clearAlerts()" data-i18n="clear">Clear</button>
-                <button class="btn-ghost" style="padding:4px 8px;" onclick="closeAlertPanel()">✕</button>
-            </div>
-        </div>
-        <div id="alertList" class="alert-list"><div class="alert-empty" data-i18n="monitoring">📡 Monitoring fleet activity...</div></div>
-    </div>
-
     <!-- HEADER -->
     <div class="app-header">
         <div class="header-brand">
@@ -66,227 +34,187 @@
                 </div>
             </div>
             <div class="brand-text">
-                <h1>VESSELTRACKER</h1>
-                <span>Maritime Operations · v5.5</span>
+                <h1>VesselTracker</h1>
+                <span>v5.5</span>
             </div>
         </div>
         <div class="header-right">
-            <div id="headerClock" class="header-clock desktop-only">00:00:00 UTC</div>
-            <div id="sanctionsStatus" class="sanctions-loading desktop-only">
-                <div class="sanctions-dot"></div><span data-i18n="loadingSanctions">Loading sanctions...</span>
-            </div>
-            <button class="btn-secondary desktop-only" style="padding:6px 11px;font-size:.73rem;" onclick="exportCSV()" aria-label="Export CSV">⬇ <span data-i18n="export">Export</span></button>
-            <button class="icon-btn" id="langToggle" title="Toggle language" aria-label="Toggle language">FR</button>
-            <button class="icon-btn" id="viewListBtn" title="List view" aria-label="List view">📋</button>
-            <button class="icon-btn" id="viewMapBtn" title="Map view" aria-label="Map view">🗺</button>
-            <button class="icon-btn" id="refreshButton" title="Refresh data" aria-label="Refresh">🔄</button>
-            <button class="icon-btn" id="alertsBtn" title="Alerts" aria-label="Alerts">
-                🔔<span class="badge hidden" id="alertBadge">0</span>
+            <div class="header-clock" id="headerClock">--:-- UTC</div>
+            <button class="icon-btn" id="langToggle" title="Language">FR</button>
+            <button class="icon-btn" id="viewListBtn" class="active" title="List view">📋</button>
+            <button class="icon-btn" id="viewMapBtn" title="Map view">🗺</button>
+            <button class="icon-btn" id="refreshButton" title="Refresh">🔄</button>
+            <button class="icon-btn" id="alertsBtn" title="Alerts">
+                📍
+                <span class="badge hidden" id="alertBadge">0</span>
             </button>
         </div>
     </div>
 
     <!-- STATUS BAR -->
     <div class="status-bar">
-        <span id="statusMsg" class="status-msg" data-i18n="ready">Ready</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-            <span id="apiStatus" class="health-pill">API: <span data-i18n="checking">Checking...</span></span>
-            <span id="sanctionsStatusInline" style="font-size:.65rem;color:var(--text-soft);font-family:var(--mono);"></span>
-        </div>
+        <span id="statusMsg" class="status-msg">Ready</span>
+        <span id="apiStatus" class="api-status" style="border:1px solid rgba(100,116,139,.3);padding:2px 6px;border-radius:4px;font-size:.65rem;">API: Checking...</span>
+        <span id="sanctionsStatus" style="padding:2px 6px;font-size:.65rem;color:var(--text-soft);"></span>
     </div>
 
     <!-- KPI BAR -->
     <div class="kpi-bar">
         <div class="kpi-item">
-            <div class="kpi-label" data-i18n="tracked">Fleet</div>
-            <div class="kpi-value blue" id="kpiTotal">–</div>
+            <span class="kpi-label">Tracked</span>
+            <span class="kpi-value" id="vesselCount">0</span>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label" data-i18n="underway">Underway</div>
-            <div class="kpi-value green" id="kpiUnderway">–</div>
+            <span class="kpi-label">Underway</span>
+            <span class="kpi-value" id="kpiUnderway">0</span>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label" data-i18n="atPort">At Port</div>
-            <div class="kpi-value blue" id="kpiAtPort">–</div>
+            <span class="kpi-label">At Port</span>
+            <span class="kpi-value" id="kpiAtPort">0</span>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label" data-i18n="atAnchor">Anchor</div>
-            <div class="kpi-value yellow" id="kpiAtAnchor">–</div>
+            <span class="kpi-label">Anchor</span>
+            <span class="kpi-value" id="kpiAtAnchor">0</span>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label" data-i18n="stalled">Stalled</div>
-            <div class="kpi-value red" id="kpiStalled">–</div>
+            <span class="kpi-label">Stalled</span>
+            <span class="kpi-value" id="kpiStalled">0</span>
         </div>
         <div class="kpi-item">
-            <div class="kpi-label">⚠ <span data-i18n="sanctioned">Sanctioned</span></div>
-            <div class="kpi-value orange" id="kpiSanctioned">–</div>
-        </div>
-        <div class="kpi-item">
-            <div class="kpi-label" data-i18n="fleetHealth">Fleet Health</div>
-            <div class="kpi-value" id="kpiHealth">–</div>
-            <div class="kpi-health-bar"><div id="kpiHealthFill" class="kpi-health-fill" style="width:0%"></div></div>
-        </div>
-        <div class="kpi-item">
-            <div class="kpi-label" data-i18n="lastUpdate">Updated</div>
-            <div class="kpi-value" id="lastUpdatedTime" style="font-size:.78rem;">--</div>
+            <span class="kpi-label">Updated</span>
+            <span class="kpi-value" id="lastUpdatedTime">--</span>
         </div>
     </div>
-
-    <!-- PTR INDICATOR -->
-    <div id="ptrIndicator" class="ptr-indicator" data-i18n="releaseToRefresh">↓ Release to refresh</div>
 
     <!-- MAIN CONTAINER -->
     <div class="main-container">
-
-        <!-- ADD VESSEL CARD -->
-        <div class="card" id="addCard">
-            <div class="card-header">
-                <span class="card-title" data-i18n="addVessel">Add Vessel</span>
-                <span id="apiStatusCard" class="health-pill">API: –</span>
-            </div>
-            <div class="card-body">
+        <!-- LIST VIEW -->
+        <div id="listView" class="list-view">
+            <!-- ADD VESSEL -->
+            <div class="add-card" id="addCard">
+                <h3>Add Vessel</h3>
                 <div class="add-vessel-form">
-                    <input type="text" id="imoInput" class="input-field" placeholder="7‑digit IMO number…" maxlength="7" autocomplete="off" inputmode="numeric" style="flex:1;" aria-label="IMO number" />
-                    <button id="addBtn" class="btn-primary" disabled aria-label="Add vessel">＋ <span data-i18n="add">Add</span></button>
+                    <input type="text" id="imoInput" class="input-field" placeholder="IMO (7-digit)" maxlength="7" autocomplete="off" />
+                    <button id="addBtn" class="btn-primary">Track</button>
                 </div>
                 <div id="namePreview"></div>
-                <p class="form-hint" data-i18n="imoHint">Enter a valid 7‑digit IMO number to track the vessel</p>
+                <p class="form-hint">Enter IMO number to track</p>
             </div>
-        </div>
 
-        <!-- FLEET CARD -->
-        <div class="card">
-            <div class="card-body" style="padding-bottom:12px;">
-                <!-- SECTION HEADER -->
-                <div class="section-header">
-                    <div>
-                        <div class="section-title" data-i18n="trackedFleet">Tracked Fleet</div>
-                        <div id="vesselCount" class="section-count">Loading...</div>
-                    </div>
-                    <div class="section-actions">
-                        <div class="view-toggle desktop-only">
-                            <button id="viewListBtnInner" class="active" onclick="toggleView('list')" aria-label="List view">≡ <span data-i18n="list">List</span></button>
-                            <button id="viewMapBtnInner" onclick="toggleView('map')" aria-label="Map view">⊕ <span data-i18n="map">Map</span></button>
-                        </div>
-                        <select id="sortSelect" class="select-field desktop-only" style="width:auto;font-size:.73rem;padding:6px 10px;" aria-label="Sort by">
-                            <option value="PRIORITY" data-i18n="priorityFirst">Priority First</option>
-                            <option value="AGE_DESC" data-i18n="oldestSignal">Oldest Signal</option>
-                            <option value="AGE_ASC" data-i18n="newestSignal">Newest Signal</option>
-                            <option value="STATUS_ASC" data-i18n="statusAsc">By Status</option>
-                            <option value="NAME_ASC" data-i18n="nameAsc">Name A–Z</option>
-                            <option value="NAME_DESC" data-i18n="nameDesc">Name Z–A</option>
-                        </select>
-                    </div>
+            <!-- FILTER SECTION -->
+            <div class="filter-section" id="filterSection">
+                <div class="filter-header">
+                    <h4>Filters</h4>
+                    <button class="icon-btn mobile-close-btn" id="filterCloseBtn">✕</button>
                 </div>
-
-                <!-- SEARCH BAR -->
-                <div class="search-row">
-                    <input type="text" id="searchInput" class="input-field search-input" placeholder="Search name or IMO…" aria-label="Search vessels" />
-                </div>
-
-                <!-- FILTER CHIPS -->
-                <div class="filter-chips">
-                    <span class="chip active" data-filter="ALL" data-i18n="all">All</span>
-                    <span class="chip" data-filter="UNDERWAY">⚡ <span data-i18n="underway">Underway</span></span>
-                    <span class="chip" data-filter="AT PORT">🏭 <span data-i18n="atPort">Port</span></span>
-                    <span class="chip" data-filter="AT ANCHOR">⚓ <span data-i18n="atAnchor">Anchor</span></span>
-                    <span class="chip" data-filter="STALLED">🔴 <span data-i18n="stalled">Stalled</span></span>
-                    <span class="chip priority-chip" data-filter="PRIORITY">🚩 <span data-i18n="priority">Priority</span></span>
-                    <span class="chip sanction-chip" data-filter="SANCTIONED">🚨 <span data-i18n="sanctioned">Sanctioned</span></span>
-                </div>
-
-                <!-- FILTER ROW (desktop) -->
-                <div class="desktop-only" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-                    <select id="ageFilter" class="select-field" style="flex:1;min-width:130px;font-size:.78rem;" aria-label="Signal age filter">
-                        <option value="ALL" data-i18n="allAges">All Signal Ages</option>
-                        <option value="1H" data-i18n="last1Hour">Last 1 hour</option>
-                        <option value="6H" data-i18n="last6Hours">Last 6 hours</option>
-                        <option value="24H" data-i18n="last24Hours">Last 24 hours</option>
-                        <option value="STALE" data-i18n="stale">Stale (>24h)</option>
+                
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select id="statusFilter" class="select-field">
+                        <option value="ALL">All</option>
+                        <option value="UNDERWAY">Underway</option>
+                        <option value="AT PORT">At Port</option>
+                        <option value="AT ANCHOR">At Anchor</option>
+                        <option value="STALLED">Stalled</option>
+                        <option value="DATA PENDING">Data Pending</option>
                     </select>
-                    <span id="dataStats" class="status-msg" style="align-self:center;font-size:.65rem;"></span>
                 </div>
 
-                <!-- LIST VIEW -->
-                <div id="listView">
-                    <div id="vesselsContainer" class="vessels-container">
-                        <div class="empty-state"><div class="icon">🚢</div><p data-i18n="loadingVesselData">Loading vessel data...</p></div>
-                    </div>
+                <div class="filter-group">
+                    <label>Signal Age</label>
+                    <select id="ageFilter" class="select-field">
+                        <option value="ALL">All</option>
+                        <option value="1H">Last 1 hour</option>
+                        <option value="6H">Last 6 hours</option>
+                        <option value="24H">Last 24 hours</option>
+                        <option value="STALE">Stale (>24h)</option>
+                    </select>
                 </div>
 
-                <!-- MAP VIEW -->
-                <div id="mapView" class="map-view">
-                    <div id="map"></div>
-                    <div class="map-legend">
-                        <div class="legend-item"><div class="legend-color underway"></div><span data-i18n="underway">Underway</span></div>
-                        <div class="legend-item"><div class="legend-color port"></div><span data-i18n="atPort">At Port</span></div>
-                        <div class="legend-item"><div class="legend-color anchor"></div><span data-i18n="atAnchor">At Anchor</span></div>
-                        <div class="legend-item"><div class="legend-color stalled"></div><span data-i18n="stalled">Stalled</span></div>
-                    </div>
+                <div class="filter-group">
+                    <label>Sort by</label>
+                    <select id="sortSelect" class="select-field">
+                        <option value="PRIORITY">Priority / Sanctions</option>
+                        <option value="AGE_DESC">Newest signal</option>
+                        <option value="AGE_ASC">Oldest signal</option>
+                        <option value="NAME_ASC">Name (A-Z)</option>
+                        <option value="NAME_DESC">Name (Z-A)</option>
+                        <option value="STATUS_ASC">Status</option>
+                    </select>
                 </div>
 
-                <!-- STATUS BAR IN CARD -->
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;">
-                    <span id="lastUpdatedLabel" class="status-msg">—</span>
-                    <span id="systemHealth" class="health-pill" data-i18n="checking">Checking...</span>
+                <div class="filter-info">
+                    <span id="dataStats">Loading...</span>
+                </div>
+            </div>
+
+            <!-- VESSELS LIST -->
+            <div class="vessels-container" id="vesselsContainer"></div>
+        </div>
+
+        <!-- MAP VIEW -->
+        <div id="mapView" class="map-view" style="display: none;">
+            <div id="map" class="map-container"></div>
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-color underway"></div>
+                    <span>Underway</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color port"></div>
+                    <span>At Port</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color anchor"></div>
+                    <span>At Anchor</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color stalled"></div>
+                    <span>Stalled</span>
                 </div>
             </div>
         </div>
-
     </div>
 
     <!-- MOBILE FILTER FAB -->
-    <button class="fab-filter mobile-only" id="fabFilter" aria-label="Open filters">⚙ <span data-i18n="filter">FILTER</span></button>
+    <button class="fab-filter" id="fabFilter" style="display: none;">⚙ FILTER</button>
 
-    <!-- MOBILE FILTER SHEET -->
-    <div id="mobileFilterSheet" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.6);" onclick="closeMobileFilter(event)" role="dialog" aria-modal="true" aria-label="Filter and sort">
-        <div style="position:absolute;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));max-height:80vh;overflow-y:auto;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                <h3 style="font-size:.85rem;font-weight:700;color:#fff;" data-i18n="filtersSort">Filters & Sort</h3>
-                <button class="btn-ghost" style="padding:4px 8px;" onclick="document.getElementById('mobileFilterSheet').style.display='none'" aria-label="Close">✕</button>
+    <!-- ALERTS PANEL -->
+    <div id="alertOverlay" class="alert-overlay" style="display: none;"></div>
+    <div id="alertPanel" class="alert-panel">
+        <div class="alert-header">
+            <h2>Alerts</h2>
+            <button class="btn-secondary" onclick="markAllAlertsRead()" style="font-size:.75rem;padding:4px 8px;">Mark all read</button>
+            <button class="btn-secondary" onclick="clearAlerts()" style="font-size:.75rem;padding:4px 8px;">Clear</button>
+        </div>
+        <div id="alertList" class="alert-list"></div>
+    </div>
+
+    <!-- CONFIRM MODAL -->
+    <div id="confirmModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Confirm</h2>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="sortBy">Sort By</label>
-                <select id="sortSelectMobile" class="select-field" style="font-size:.82rem;">
-                    <option value="PRIORITY" data-i18n="priorityFirst">Priority First</option>
-                    <option value="AGE_DESC" data-i18n="oldestSignal">Oldest Signal</option>
-                    <option value="AGE_ASC" data-i18n="newestSignal">Newest Signal</option>
-                    <option value="STATUS_ASC" data-i18n="statusAsc">By Status</option>
-                    <option value="NAME_ASC" data-i18n="nameAsc">Name A–Z</option>
-                    <option value="NAME_DESC" data-i18n="nameDesc">Name Z–A</option>
-                </select>
+            <div class="modal-body" id="confirmText"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="confirmCancel">Cancel</button>
+                <button class="btn-danger" id="confirmOk">Remove</button>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="signalAge">Signal Age</label>
-                <select id="ageFilterMobile" class="select-field" style="font-size:.82rem;">
-                    <option value="ALL" data-i18n="allAges">All Signal Ages</option>
-                    <option value="1H" data-i18n="last1Hour">Last 1 hour</option>
-                    <option value="6H" data-i18n="last6Hours">Last 6 hours</option>
-                    <option value="24H" data-i18n="last24Hours">Last 24 hours</option>
-                    <option value="STALE" data-i18n="stale">Stale (>24h)</option>
-                </select>
-            </div>
-            <button class="btn-primary" style="width:100%;" onclick="applyMobileFilters()" data-i18n="applyFilters">Apply Filters</button>
         </div>
     </div>
 
-    <!-- BOTTOM NAV (mobile) -->
-    <nav class="bottom-nav mobile-only">
-        <div class="nav-item active" id="navFleet" onclick="mobileNav('fleet')" role="button" tabindex="0" aria-label="Fleet"><span>🚢</span><span data-i18n="fleet">Fleet</span></div>
-        <div class="nav-item" id="navMap" onclick="mobileNav('map')" role="button" tabindex="0" aria-label="Map"><span>🗺</span><span data-i18n="map">Map</span></div>
-        <div class="nav-item" id="navAdd" onclick="mobileNav('add')" role="button" tabindex="0" aria-label="Add vessel"><span>＋</span><span data-i18n="add">Add</span></div>
-        <div class="nav-item" id="navAlerts" onclick="toggleAlertPanel()" role="button" tabindex="0" aria-label="Alerts">
-            <span style="position:relative;">🔔<span id="navBadge" class="badge hidden" style="top:-8px;right:-8px;font-size:.55rem;width:15px;height:15px;"></span></span>
-            <span data-i18n="alerts">Alerts</span>
-        </div>
-        <div class="nav-item" id="navExport" onclick="exportCSV()" role="button" tabindex="0" aria-label="Export"><span>⬇</span><span data-i18n="export">Export</span></div>
-    </nav>
+    <!-- LOADING OVERLAY -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner" style="width: 40px; height: 40px;"></div>
+        <p id="loadingText" style="margin-top: 12px; font-size: .85rem;">Loading...</p>
+    </div>
 
     <!-- SYSTEM INFO -->
-    <div class="system-info"><span id="systemInfo">VesselTracker v5.5</span></div>
+    <div class="system-info">
+        <span id="systemHealth">System health: 0%</span>
+    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="translations.js"></script>
     <script src="script.js"></script>
 </body>
