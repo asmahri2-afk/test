@@ -1,1 +1,8 @@
-
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.cma_cgm.vesseltracker",
+        "sha256_cert_fingerprints": ["79:76:26:18:D3:29:0E:39:9C:21:67:56:53:48:5F:C9:4A:7D:C1:42:7A:2C:8F:0C:AA:44:45:6E:7F:06:D8:30"]
+      }
+    }]
