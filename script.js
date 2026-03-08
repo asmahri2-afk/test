@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// VESSELTRACKER v5.5 FINAL — Complete merged feature set
+// VESSELTRACKER v5.5 FINAL — Fully fixed & translated
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── CONFIG ───────────────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ const CONFIG = {
     CRITICAL_THRESHOLD_MS: 24 * 3600000,
     ARRIVED_THRESHOLD_NM: 30.0,
     REFRESH_INTERVAL: 5 * 60000,
+    WEATHER_CACHE_TTL: 30 * 60000,
+    MAX_CONCURRENT_WEATHER: 3,
 };
 CONFIG.RAW_BASE = `https://raw.githubusercontent.com/${CONFIG.USERNAME}/${CONFIG.REPO}/${CONFIG.BRANCH}/`;
 
@@ -46,10 +48,13 @@ const S = {
     weatherCache: new Map(),
     mapInstance: null,
     mapMarkers: [],
+    mapClusterGroup: null,
     mapInitialized: false,
     noteTimers: {},
     recentAlertKeys: new Set(),
     lastDataModified: null,
+    weatherQueue: [],
+    weatherActive: 0,
 };
 
 // ── DOM REFS ─────────────────────────────────────────────────────────────────
@@ -123,6 +128,7 @@ function formatNumber(num) {
 
 function parseAisTimestamp(s) {
     if (!s) return null;
+    // ISO 8601
     const iso = new Date(s);
     if (!isNaN(iso.getTime()) && s.includes('T')) return iso;
     // "Mar 07, 2026 00:05 UTC"
@@ -130,8 +136,7 @@ function parseAisTimestamp(s) {
     if (m) {
         const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
         const mo = months[m[1]];
-        if (mo === undefined) return null;
-        return new Date(Date.UTC(+m[3], mo, +m[2], +m[4], +m[5]));
+        if (mo !== undefined) return new Date(Date.UTC(+m[3], mo, +m[2], +m[4], +m[5]));
     }
     // "2026-03-07 00:05:00 UTC"
     const m2 = s.replace(' UTC', '').trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
@@ -147,10 +152,10 @@ function formatSignalAge(s) {
         const ms = Date.now() - dt.getTime();
         const h = ms / 3600000;
         let a, c;
-        if (ms < 60000) { a = 'Just now'; c = 'age-recent'; }
-        else if (h < 1) { const min = Math.floor(ms / 60000); a = `${min}m ago`; c = min <= 30 ? 'age-recent' : 'age-moderate'; }
-        else if (h < 24) { a = `${h.toFixed(1)}h ago`; c = h <= 3 ? 'age-recent' : 'age-moderate'; }
-        else { a = `${Math.floor(h / 24)}d ago`; c = 'age-stale'; }
+        if (ms < 60000) { a = i18n.get('justNow'); c = 'age-recent'; }
+        else if (h < 1) { const min = Math.floor(ms / 60000); a = `${min}${i18n.get('minAgo')}`; c = min <= 30 ? 'age-recent' : 'age-moderate'; }
+        else if (h < 24) { a = `${h.toFixed(1)}${i18n.get('hAgo')}`; c = h <= 3 ? 'age-recent' : 'age-moderate'; }
+        else { a = `${Math.floor(h / 24)}${i18n.get('dAgo')}`; c = 'age-stale'; }
         if (ms > CONFIG.CRITICAL_THRESHOLD_MS) c = 'status-critical';
         return { ageText: a, ageClass: c, rawAgeMs: ms };
     } catch { return { ageText: 'Error', ageClass: 'age-stale', rawAgeMs: Infinity }; }
@@ -162,15 +167,15 @@ function formatLocalTime(s) {
         const d = parseAisTimestamp(s) || new Date(s);
         if (isNaN(d.getTime())) return 'Invalid';
         const diff = d.getTime() - Date.now(), abs = Math.abs(diff);
-        if (abs < 60000) return 'Arriving Now';
+        if (abs < 60000) return i18n.get('arrivingNow');
         if (diff > 0) {
-            if (diff < 3600000) return `in ${Math.floor(abs / 60000)}m`;
-            if (diff < 86400000) return `in ${Math.floor(abs / 3600000)}h`;
+            if (diff < 3600000) return `${i18n.get('in')} ${Math.floor(abs / 60000)}${i18n.get('min')}`;
+            if (diff < 86400000) return `${i18n.get('in')} ${Math.floor(abs / 3600000)}${i18n.get('h')}`;
         } else {
-            if (abs < 3600000) return `${Math.floor(abs / 60000)}m ago`;
-            if (abs < 86400000) return `${Math.floor(abs / 3600000)}h ago`;
+            if (abs < 3600000) return `${Math.floor(abs / 60000)}${i18n.get('minAgo')}`;
+            if (abs < 86400000) return `${Math.floor(abs / 3600000)}${i18n.get('hAgo')}`;
         }
-        return d.toLocaleDateString(navigator.language, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return d.toLocaleDateString(i18n.currentLang === 'FR' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch { return s; }
 }
 
@@ -182,9 +187,9 @@ function formatEtaCountdown(utcString) {
         const diff = eta - Date.now(), abs = Math.abs(diff);
         const h = Math.floor(abs / 3600000), m = Math.floor((abs % 3600000) / 60000), s = Math.floor((abs % 60000) / 1000);
         const p = v => String(v).padStart(2, '0');
-        if (abs < 60000) return { text: 'Arriving Now', cls: 'arrived' };
-        if (diff > 0) return { text: `ETA ${h > 0 ? h + 'h ' : ''}${p(m)}m ${p(s)}s`, cls: '' };
-        return { text: `${h > 0 ? h + 'h ' : ''}${p(m)}m overdue`, cls: 'overdue' };
+        if (abs < 60000) return { text: i18n.get('arrivingNow'), cls: 'arrived' };
+        if (diff > 0) return { text: `${i18n.get('eta')} ${h > 0 ? h + i18n.get('h') + ' ' : ''}${p(m)}${i18n.get('m')} ${p(s)}${i18n.get('s')}`, cls: '' };
+        return { text: `${h > 0 ? h + i18n.get('h') + ' ' : ''}${p(m)}${i18n.get('m')} ${i18n.get('overdue')}`, cls: 'overdue' };
     } catch { return null; }
 }
 
@@ -202,7 +207,16 @@ function startEtaCountdowns() {
 
 function getVesselStatus(v) {
     if (!v || !v.name || v.sog === undefined || v.sog === null) return 'DATA PENDING';
-    const sog = parseFloat(v.sog), dd = parseFloat(v.destination_distance_nm), nd = parseFloat(v.nearest_distance_nm), dest = (v.destination || '').toUpperCase();
+    // Use AIS navigational status if available and reliable
+    if (v.nav_status) {
+        const ns = v.nav_status.toUpperCase();
+        if (ns.includes('MOORED') || ns.includes('BERTH')) return 'AT PORT';
+        if (ns.includes('ANCHOR')) return 'AT ANCHOR';
+        if (ns.includes('UNDER WAY') || ns.includes('UNDERWAY')) return 'UNDERWAY';
+        // Otherwise fall through to heuristic
+    }
+    const sog = parseFloat(v.sog), dd = parseFloat(v.destination_distance_nm), nd = parseFloat(v.nearest_distance_nm);
+    const dest = (v.destination || '').toUpperCase();
     if (sog <= 0.5) {
         if (['ANCHOR', 'ANCH.', 'ANCHORAGE', 'ANCHORING', 'AT ANCHOR'].some(k => dest.includes(k))) return 'AT ANCHOR';
         if ((!isNaN(dd) && dd <= CONFIG.ARRIVED_THRESHOLD_NM) || (!isNaN(nd) && nd <= CONFIG.ARRIVED_THRESHOLD_NM)) return 'AT PORT';
@@ -265,44 +279,49 @@ function getPortCompatibility(draughtStr) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// WEATHER
+// WEATHER (with queue to avoid API limits)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const _weatherPending = new Set();
+async function processWeatherQueue() {
+    while (S.weatherQueue.length > 0 && S.weatherActive < CONFIG.MAX_CONCURRENT_WEATHER) {
+        const { imo, lat, lon } = S.weatherQueue.shift();
+        S.weatherActive++;
+        try {
+            const cached = S.weatherCache.get(imo);
+            if (cached && Date.now() - cached.ts < CONFIG.WEATHER_CACHE_TTL) {
+                updateWeatherUI(imo, cached);
+                S.weatherActive--;
+                continue;
+            }
+            const [mr, wr] = await Promise.all([
+                fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=wave_height`),
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m&wind_speed_unit=kn`)
+            ]);
+            const md = await mr.json(), wd = await wr.json();
+            const result = { wave: md.current?.wave_height, wind: wd.current?.wind_speed_10m, ts: Date.now() };
+            S.weatherCache.set(imo, result);
+            updateWeatherUI(imo, result);
+        } catch (e) {
+            console.warn(`Weather fetch failed for ${imo}:`, e.message);
+        } finally {
+            S.weatherActive--;
+        }
+    }
+}
 
-async function fetchAndRenderWeather(imo, lat, lon) {
-    if (!lat || !lon) return;
+function updateWeatherUI(imo, data) {
     const container = document.getElementById(`weather-${imo}`);
     if (!container) return;
-    const cached = S.weatherCache.get(imo);
-    if (cached && Date.now() - cached.ts < 30 * 60000) {
-        const p = [];
-        if (cached.wave != null) p.push(`<span class="tag weather">🌊 ${Number(cached.wave).toFixed(1)}m</span>`);
-        if (cached.wind != null) p.push(`<span class="tag weather">💨 ${Number(cached.wind).toFixed(0)}kn</span>`);
-        if (p.length) container.innerHTML = p.join('');
-        return;
-    }
-    if (_weatherPending.has(imo)) return;
-    _weatherPending.add(imo);
-    try {
-        const [mr, wr] = await Promise.all([
-            fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=wave_height`),
-            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m&wind_speed_unit=kn`)
-        ]);
-        const md = await mr.json(), wd = await wr.json();
-        const result = { wave: md.current?.wave_height, wind: wd.current?.wind_speed_10m, ts: Date.now() };
-        S.weatherCache.set(imo, result);
-        const c2 = document.getElementById(`weather-${imo}`);
-        if (!c2) return;
-        const p = [];
-        if (result.wave != null) p.push(`<span class="tag weather">🌊 ${Number(result.wave).toFixed(1)}m</span>`);
-        if (result.wind != null) p.push(`<span class="tag weather">💨 ${Number(result.wind).toFixed(0)}kn</span>`);
-        if (p.length) c2.innerHTML = p.join('');
-    } catch (e) {
-        console.warn(`Weather fetch failed for ${imo}:`, e.message);
-    } finally {
-        _weatherPending.delete(imo);
-    }
+    const parts = [];
+    if (data.wave != null) parts.push(`<span class="tag weather">🌊 ${Number(data.wave).toFixed(1)}m</span>`);
+    if (data.wind != null) parts.push(`<span class="tag weather">💨 ${Number(data.wind).toFixed(0)}kn</span>`);
+    if (parts.length) container.innerHTML = parts.join('');
+}
+
+function queueWeatherFetch(imo, lat, lon) {
+    if (!lat || !lon) return;
+    S.weatherQueue.push({ imo, lat, lon });
+    processWeatherQueue();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -327,7 +346,7 @@ function pushAlert(type, imo, vessel, msg) {
 }
 
 function renderAlerts() {
-    if (!S.alerts.length) { el.alertList.innerHTML = '<div class="alert-empty">📡 Monitoring fleet activity...</div>'; return; }
+    if (!S.alerts.length) { el.alertList.innerHTML = `<div class="alert-empty">${i18n.get('monitoring')}</div>`; return; }
     el.alertList.innerHTML = S.alerts.map(a => `
         <div class="alert-item ${a.read ? '' : 'unread'} type-${a.type}">
             <div><span style="margin-right:4px;">${a.icon}</span><span class="alert-msg">${escapeHtml(a.msg)}</span></div>
@@ -384,7 +403,7 @@ async function loadSanctionsLists() {
         S.sanctionsLoaded = true;
         const displayCount = databaseTotal > 0 ? databaseTotal : S.sanctionedImos.size;
         const updated = data.updated ? ' · ' + new Date(data.updated).toLocaleDateString() : '';
-        const html = `<span style="color:var(--success);font-size:.68rem;font-family:var(--mono);">✓ Monitoring ${displayCount.toLocaleString()} sanctioned vessels${updated}</span>`;
+        const html = `<span style="color:var(--success);font-size:.68rem;font-family:var(--mono);">✓ ${i18n.get('monitoringSanctions')} ${displayCount.toLocaleString()}${updated}</span>`;
         if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = html;
         const inline = document.getElementById('sanctionsStatusInline');
         if (inline) inline.innerHTML = html;
@@ -392,7 +411,7 @@ async function loadSanctionsLists() {
     } catch (e) {
         console.warn('Sanctions load failed:', e.message);
         S.sanctionsLoaded = true;
-        const html = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ Sanctions unavailable</span>`;
+        const html = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ ${i18n.get('sanctionsUnavailable')}</span>`;
         if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = html;
     }
 }
@@ -406,7 +425,7 @@ function checkFleetSanctions() {
             const d = S.sanctionDetails.get(imo) || [];
             const lists = [...new Set(d.map(x => x.list))].join(', ');
             const v = S.vesselsDataMap.get(imo);
-            pushAlert('sanctioned', imo, v?.name || `IMO ${imo}`, `🚨 SANCTIONED: ${v?.name || 'IMO ' + imo} on ${lists || 'sanctions list'}`);
+            pushAlert('sanctioned', imo, v?.name || `IMO ${imo}`, `🚨 ${i18n.get('sanctionedVessel')}: ${v?.name || 'IMO ' + imo} ${i18n.get('on')} ${lists || i18n.get('sanctionsList')}`);
         }
     }
     if (found) { renderVessels(S.trackedImosCache); updateFleetKPI(S.trackedImosCache); }
@@ -450,7 +469,7 @@ function onNoteInput(imo, ta) {
 
 function togglePriority(imo) {
     if (isPriority(imo)) S.priorities = S.priorities.filter(x => x !== imo);
-    else { S.priorities.push(imo); pushAlert('priority', imo, imo, `IMO ${imo} flagged as Priority`); }
+    else { S.priorities.push(imo); pushAlert('priority', imo, imo, `IMO ${imo} ${i18n.get('flaggedPriority')}`); }
     localStorage.setItem('vt_priorities', JSON.stringify(S.priorities));
     renderVessels(S.trackedImosCache);
 }
@@ -460,14 +479,14 @@ function toggleDetails(imo) {
     if (exp) exp.classList.toggle('open');
 }
 
-function showLoading(msg = 'Loading...') { if (el.loadingText) el.loadingText.textContent = msg; if (el.loadingOverlay) el.loadingOverlay.classList.remove('hidden'); }
+function showLoading(msg = i18n.get('loading')) { if (el.loadingText) el.loadingText.textContent = msg; if (el.loadingOverlay) el.loadingOverlay.classList.remove('hidden'); }
 function hideLoading() { if (el.loadingOverlay) el.loadingOverlay.classList.add('hidden'); }
 
 function updateStatus(msg, type = 'info') {
     if (!el.statusMsg) return;
     el.statusMsg.textContent = msg;
     el.statusMsg.className = `status-msg ${type === 'info' ? '' : type}`;
-    if (type === 'success') setTimeout(() => { if (el.statusMsg.textContent === msg) { el.statusMsg.textContent = 'Ready'; el.statusMsg.className = 'status-msg'; } }, 5000);
+    if (type === 'success') setTimeout(() => { if (el.statusMsg.textContent === msg) { el.statusMsg.textContent = i18n.get('ready'); el.statusMsg.className = 'status-msg'; } }, 5000);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -484,19 +503,19 @@ async function fetchWithTimeout(url, options = {}, timeout = 8000) {
 async function checkApiStatus() {
     try {
         await fetchWithTimeout(`${CONFIG.RENDER_API}/ping`, { method: 'GET' }, 5000);
-        const s = 'API: Online';
+        const s = i18n.get('apiOnline');
         const css = 'border-color:rgba(16,185,129,.4);color:var(--success);';
         if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
         if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
     } catch {
         try {
             await fetchWithTimeout(`${CONFIG.RAW_BASE}${CONFIG.TRACKED_PATH}`, { method: 'HEAD' }, 5000);
-            const s = 'API: Limited';
+            const s = i18n.get('apiLimited');
             const css = 'border-color:rgba(245,158,11,.4);color:var(--warning);';
             if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
             if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
         } catch {
-            const s = 'API: Offline';
+            const s = i18n.get('apiOffline');
             const css = 'border-color:rgba(239,68,68,.4);color:var(--danger);';
             if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
             if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
@@ -512,8 +531,6 @@ async function fetchGitHubData(path, fallback = null) {
     catch { return { data: fallback, sha: null, source: 'error' }; }
 }
 
-// Fetch the real last-commit timestamp for a file via the GitHub Commits API.
-// raw.githubusercontent.com is CDN-cached so its Last-Modified header is unreliable.
 async function fetchFileLastCommit(path) {
     const url = `https://api.github.com/repos/${CONFIG.USERNAME}/${CONFIG.REPO}/commits?path=${encodeURIComponent(path)}&per_page=1`;
     try {
@@ -525,7 +542,6 @@ async function fetchFileLastCommit(path) {
     } catch { return null; }
 }
 
-// Update both KPI "Updated" cell and card footer label, respecting current language.
 function updateLastModified(date) {
     if (!date) return;
     S.lastDataModified = date;
@@ -540,9 +556,9 @@ async function ghPut(path, data, sha, message) {
     const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, data, message }) }, 15000);
     if (!res.ok) {
         const txt = await res.text();
-        let msg = `Write failed: ${res.status}`;
-        if (res.status === 409) msg = 'Conflict — please retry.';
-        else if (res.status === 401 || res.status === 403) msg = 'API auth failed.';
+        let msg = `${i18n.get('writeFailed')} ${res.status}`;
+        if (res.status === 409) msg = i18n.get('conflictRetry');
+        else if (res.status === 401 || res.status === 403) msg = i18n.get('authFailed');
         else { try { msg += ` — ${JSON.parse(txt).message}`; } catch { msg += ` — ${txt.substring(0, 80)}`; } }
         throw new Error(msg);
     }
@@ -569,7 +585,7 @@ async function loadData() {
     if (S.isApiBusy) return;
     S.isApiBusy = true;
     if (el.refreshButton) el.refreshButton.disabled = true;
-    updateStatus('Refreshing...', 'info');
+    updateStatus(i18n.get('refreshing'), 'info');
     try {
         const [ti, vi, si, pi] = await Promise.all([
             fetchGitHubData(CONFIG.TRACKED_PATH, []),
@@ -593,18 +609,17 @@ async function loadData() {
         S.vesselsDataMap = nm;
         S.staticCache = new Map(Object.entries(si.data || {}));
         S.portsData = pi.data || {};
-        S.lastDataModified = new Date(); // placeholder until commit API responds
+        S.lastDataModified = new Date();
         saveToLocalStorage();
         generateAlerts(nm, tracked);
         updateAlertBadge();
         updateSystemHealth(Date.now(), vl.length, vi.source);
         updateFleetKPI(tracked);
-        if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} vessel${tracked.length !== 1 ? 's' : ''} tracked`;
-        if (el.dataStats) el.dataStats.textContent = `${vl.length} in database · ${vi.source}`;
+        if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} ${i18n.get('vesselsTracked')}`;
+        if (el.dataStats) el.dataStats.textContent = `${vl.length} ${i18n.get('inDatabase')} · ${vi.source}`;
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
-        updateStatus(`Fleet loaded — ${tracked.length} vessels`, 'success');
-        // Fetch real last-commit time from GitHub API (non-blocking, updates UI when ready)
+        updateStatus(`${i18n.get('fleetLoaded')} — ${tracked.length} ${i18n.get('vessels')}`, 'success');
         fetchFileLastCommit(CONFIG.VESSELS_PATH).then(date => {
             updateLastModified(date || new Date());
             if (date) updateSystemHealth(date.getTime(), vl.length, vi.source);
@@ -612,9 +627,9 @@ async function loadData() {
     } catch (err) {
         console.error('Load error:', err);
         if (!loadCachedData()) {
-            updateStatus(`Load failed: ${err.message}`, 'error');
-            if (el.vesselsContainer) el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p style="color:var(--danger);">${escapeHtml(err.message)}</p><small>Check network connection</small></div>`;
-        } else updateStatus('Showing cached data (offline)', 'warning');
+            updateStatus(`${i18n.get('loadFailed')}: ${err.message}`, 'error');
+            if (el.vesselsContainer) el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p style="color:var(--danger);">${escapeHtml(err.message)}</p><small>${i18n.get('checkNetwork')}</small></div>`;
+        } else updateStatus(i18n.get('showingCached'), 'warning');
     } finally {
         S.isApiBusy = false;
         if (el.refreshButton) el.refreshButton.disabled = false;
@@ -630,13 +645,13 @@ function generateAlerts(newMap, trackedImos) {
         const ns = getVesselStatus(v), prev = S.previousVesselStates.get(imo), age = formatSignalAge(v.last_pos_utc);
         if (!isFirst && prev) {
             if (prev.status !== ns) {
-                if (ns === 'STALLED') pushAlert('stalled', imo, v.name, `${v.name || 'IMO ' + imo} has stopped moving`);
-                if (ns === 'AT PORT') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} arrived at port`);
-                if (ns === 'AT ANCHOR') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} now at anchor`);
+                if (ns === 'STALLED') pushAlert('stalled', imo, v.name, `${v.name || 'IMO ' + imo} ${i18n.get('stalledAlert')}`);
+                if (ns === 'AT PORT') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} ${i18n.get('arrivedPort')}`);
+                if (ns === 'AT ANCHOR') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} ${i18n.get('atAnchorAlert')}`);
             }
-            if (age.rawAgeMs > CONFIG.STALE_THRESHOLD_MS && prev.signalAgeMs <= CONFIG.STALE_THRESHOLD_MS) pushAlert('stale', imo, v.name, `${v.name || 'IMO ' + imo} AIS signal lost (${age.ageText})`);
+            if (age.rawAgeMs > CONFIG.STALE_THRESHOLD_MS && prev.signalAgeMs <= CONFIG.STALE_THRESHOLD_MS) pushAlert('stale', imo, v.name, `${v.name || 'IMO ' + imo} ${i18n.get('signalLost')} (${age.ageText})`);
             const dd = parseFloat(v.destination_distance_nm);
-            if (!isNaN(dd) && dd <= 50 && (prev.destDist == null || prev.destDist > 50)) pushAlert('approaching', imo, v.name, `${v.name || 'IMO ' + imo} approaching (${dd.toFixed(0)} nm)`);
+            if (!isNaN(dd) && dd <= 50 && (prev.destDist == null || prev.destDist > 50)) pushAlert('approaching', imo, v.name, `${v.name || 'IMO ' + imo} ${i18n.get('approaching')} (${dd.toFixed(0)} nm)`);
         }
         S.previousVesselStates.set(imo, { status: ns, signalAgeMs: age.rawAgeMs, destDist: parseFloat(v.destination_distance_nm) || null });
     }
@@ -644,13 +659,13 @@ function generateAlerts(newMap, trackedImos) {
 }
 
 function updateSystemHealth(lastMod, count, source) {
-    if (!lastMod) { if (el.systemHealth) el.systemHealth.textContent = 'Unknown'; return; }
+    if (!lastMod) { if (el.systemHealth) el.systemHealth.textContent = i18n.get('unknown'); return; }
     const ms = Date.now() - lastMod;
     let text, color, bg;
-    if (ms < 3600000) { text = '● Excellent'; color = 'var(--success)'; bg = 'rgba(16,185,129,.12)'; }
-    else if (ms < CONFIG.STALE_THRESHOLD_MS) { text = '● Good'; color = 'var(--warning)'; bg = 'rgba(245,158,11,.12)'; }
-    else if (ms < CONFIG.CRITICAL_THRESHOLD_MS) { text = '● Stale'; color = '#f97316'; bg = 'rgba(249,115,22,.12)'; }
-    else { text = '● Critical'; color = 'var(--danger)'; bg = 'rgba(239,68,68,.12)'; }
+    if (ms < 3600000) { text = i18n.get('excellent'); color = 'var(--success)'; bg = 'rgba(16,185,129,.12)'; }
+    else if (ms < CONFIG.STALE_THRESHOLD_MS) { text = i18n.get('good'); color = 'var(--warning)'; bg = 'rgba(245,158,11,.12)'; }
+    else if (ms < CONFIG.CRITICAL_THRESHOLD_MS) { text = i18n.get('stale'); color = '#f97316'; bg = 'rgba(249,115,22,.12)'; }
+    else { text = i18n.get('critical'); color = 'var(--danger)'; bg = 'rgba(239,68,68,.12)'; }
     if (el.systemHealth) { el.systemHealth.textContent = text; el.systemHealth.style.cssText = `color:${color};background:${bg};border-color:${color}40;`; }
 }
 
@@ -740,16 +755,16 @@ function closeMobileFilter(e) {
 
 async function addVessel() {
     const imo = el.imoInput.value.trim();
-    if (!imo || !/^\d{7}$/.test(imo)) { updateStatus('Invalid IMO — must be 7 digits', 'error'); return; }
-    if (!validateIMO(imo)) { updateStatus('Invalid IMO — checksum failed', 'error'); return; }
-    if (S.trackedImosCache.includes(imo)) { updateStatus('Already tracked', 'warning'); return; }
+    if (!imo || !/^\d{7}$/.test(imo)) { updateStatus(i18n.get('invalidIMODigits'), 'error'); return; }
+    if (!validateIMO(imo)) { updateStatus(i18n.get('invalidIMOChecksum'), 'error'); return; }
+    if (S.trackedImosCache.includes(imo)) { updateStatus(i18n.get('alreadyTracked'), 'warning'); return; }
     if (S.isApiBusy) return;
-    showLoading(`Adding IMO ${imo}...`);
+    showLoading(i18n.get('addingVessel') + ` IMO ${imo}...`);
     await updateTrackedImos(imo, true);
-    pushAlert('added', imo, imo, `IMO ${imo} added to fleet tracking`);
+    pushAlert('added', imo, imo, `IMO ${imo} ${i18n.get('addedToFleet')}`);
     if (S.sanctionsLoaded && S.sanctionedImos.has(imo)) {
         const d = S.sanctionDetails.get(imo) || [];
-        pushAlert('sanctioned', imo, imo, `🚨 SANCTIONED VESSEL added: IMO ${imo} on ${[...new Set(d.map(x => x.list))].join(', ') || 'sanctions list'}`);
+        pushAlert('sanctioned', imo, imo, `🚨 ${i18n.get('sanctionedVessel')} ${i18n.get('added')}: IMO ${imo} ${i18n.get('on')} ${[...new Set(d.map(x => x.list))].join(', ') || i18n.get('sanctionsList')}`);
     }
     if (S.staticCache.has(imo)) {
         updateStaticCache(imo, S.staticCache.get(imo)).catch(e => console.warn('Static cache on add:', e));
@@ -769,13 +784,13 @@ async function addVessel() {
 
 function removeIMO(imo) {
     const name = S.vesselsDataMap.get(imo)?.name || `IMO ${imo}`;
-    el.confirmText.textContent = `Remove "${name}" (IMO ${imo}) from fleet tracking?`;
+    el.confirmText.textContent = `${i18n.get('removeConfirm')} "${name}" (IMO ${imo})?`;
     el.confirmModal.classList.remove('hidden');
     S.vesselToRemove = imo;
 }
 
 async function removeIMOConfirmed(imo) {
-    showLoading(`Removing IMO ${imo}...`);
+    showLoading(i18n.get('removingVessel') + ` IMO ${imo}...`);
     await updateTrackedImos(imo, false);
     hideLoading();
 }
@@ -785,20 +800,20 @@ async function updateTrackedImos(imo, isAdd) {
     if (el.refreshButton) el.refreshButton.disabled = true;
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            updateStatus(`${isAdd ? 'Adding' : 'Removing'} (${attempt}/2)...`);
+            updateStatus(`${isAdd ? i18n.get('adding') : i18n.get('removing')} (${attempt}/2)...`);
             const result = await fetchGitHubData(CONFIG.TRACKED_PATH, []);
             let list = (Array.isArray(result.data) ? result.data : result.data?.tracked_imos || []).map(String).filter(Boolean);
             if (isAdd) { if (!list.includes(imo)) list.push(imo); } else list = list.filter(x => x !== imo);
             list.sort();
             await ghPut(CONFIG.TRACKED_PATH, list, null, `${isAdd ? 'Add' : 'Remove'} IMO ${imo}`);
-            updateStatus(`${isAdd ? 'Added' : 'Removed'} IMO ${imo}`, 'success');
+            updateStatus(`${isAdd ? i18n.get('added') : i18n.get('removed')} IMO ${imo}`, 'success');
             if (isAdd) { el.imoInput.value = ''; el.namePreview.innerHTML = ''; el.addBtn.disabled = true; }
             await loadData();
             break;
         } catch (err) {
-            if (attempt < 2) { updateStatus('Retrying...', 'warning'); await new Promise(r => setTimeout(r, 1000)); }
+            if (attempt < 2) { updateStatus(i18n.get('retrying'), 'warning'); await new Promise(r => setTimeout(r, 1000)); }
             else {
-                updateStatus(`Failed: ${err.message}`, 'error');
+                updateStatus(`${i18n.get('failed')}: ${err.message}`, 'error');
                 if (isAdd) S.trackedImosCache.push(imo); else S.trackedImosCache = S.trackedImosCache.filter(x => x !== imo);
                 saveToLocalStorage();
                 renderVessels(S.trackedImosCache);
@@ -823,39 +838,39 @@ function setupImoInput() {
 
         if (!imo) return;
         if (!/^\d{7}$/.test(imo)) {
-            if (imo.length > 0) el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ Must be exactly 7 digits</span>`;
+            if (imo.length > 0) el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ ${i18n.get('mustBe7Digits')}</span>`;
             return;
         }
         if (!validateIMO(imo)) {
             el.imoInput.style.borderColor = 'var(--danger)';
-            el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ Invalid IMO checksum</span>`;
+            el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ ${i18n.get('invalidIMOChecksum')}</span>`;
             return;
         }
         if (S.trackedImosCache.includes(imo)) {
             el.imoInput.style.borderColor = 'var(--warning)';
-            el.namePreview.innerHTML = `<span style="color:var(--warning);font-size:.78rem;">⚠ Already tracked</span>`;
+            el.namePreview.innerHTML = `<span style="color:var(--warning);font-size:.78rem;">⚠ ${i18n.get('alreadyTracked')}</span>`;
             return;
         }
         el.imoInput.style.borderColor = 'var(--success)';
         const isSanc = S.sanctionsLoaded && S.sanctionedImos.has(imo);
-        const warnHtml = isSanc ? `<div style="background:var(--sanction-dim);border:1px solid rgba(255,69,0,.3);border-radius:8px;padding:8px 11px;margin-bottom:6px;font-size:.76rem;"><strong style="color:var(--sanction);">🚨 SANCTIONED VESSEL</strong><div style="color:var(--text-main);margin-top:2px;font-size:.7rem;">${escapeHtml([...new Set((S.sanctionDetails.get(imo) || []).map(d => d.list))].join(', ') || 'Sanctions list')}</div></div>` : '';
+        const warnHtml = isSanc ? `<div style="background:var(--sanction-dim);border:1px solid rgba(255,69,0,.3);border-radius:8px;padding:8px 11px;margin-bottom:6px;font-size:.76rem;"><strong style="color:var(--sanction);">🚨 ${i18n.get('sanctionedVessel')}</strong><div style="color:var(--text-main);margin-top:2px;font-size:.7rem;">${escapeHtml([...new Set((S.sanctionDetails.get(imo) || []).map(d => d.list))].join(', ') || i18n.get('sanctionsList'))}</div></div>` : '';
         if (S.staticCache.has(imo)) {
             const c = S.staticCache.get(imo), fc = getFlagCode(c.flag);
             const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">` : '';
-            el.namePreview.innerHTML = warnHtml + `<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${escapeHtml(c.name || 'IMO ' + imo)}</strong><span style="font-size:.65rem;background:var(--bg-elevated);padding:1px 5px;border-radius:4px;color:var(--text-soft);">cached</span></div>`;
+            el.namePreview.innerHTML = warnHtml + `<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:#fff;">${escapeHtml(c.name || 'IMO ' + imo)}</strong><span style="font-size:.65rem;background:var(--bg-elevated);padding:1px 5px;border-radius:4px;color:var(--text-soft);">${i18n.get('cached')}</span></div>`;
             el.addBtn.disabled = false;
             return;
         }
         S.debounceTimer = setTimeout(async () => {
             el.addBtn.disabled = true;
-            el.namePreview.innerHTML = warnHtml + `<span style="color:var(--text-soft);font-size:.78rem;">🔍 Looking up...</span>`;
+            el.namePreview.innerHTML = warnHtml + `<span style="color:var(--text-soft);font-size:.78rem;">🔍 ${i18n.get('lookingUp')}...</span>`;
             try {
                 let data = null;
                 for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`, `${CONFIG.RENDER_API}/vessel/${imo}`]) {
                     try { const r = await fetchWithTimeout(ep, {}, 5000); if (r.ok) { data = await r.json(); break; } } catch { }
                 }
                 if (!data || data.found === false) {
-                    el.namePreview.innerHTML = warnHtml + `<span style="color:var(--danger);font-size:.78rem;">✕ IMO ${imo} not found</span>`;
+                    el.namePreview.innerHTML = warnHtml + `<span style="color:var(--danger);font-size:.78rem;">✕ ${i18n.get('imoNotFound')} ${imo}</span>`;
                     el.addBtn.disabled = !isSanc;
                     return;
                 }
@@ -865,7 +880,7 @@ function setupImoInput() {
                 el.addBtn.disabled = false;
                 updateStaticCache(imo, data).catch(() => { });
             } catch {
-                el.namePreview.innerHTML = warnHtml + `<span style="color:var(--warning);font-size:.78rem;">⚠ Lookup failed — you can still add IMO ${imo}</span>`;
+                el.namePreview.innerHTML = warnHtml + `<span style="color:var(--warning);font-size:.78rem;">⚠ ${i18n.get('lookupFailed')} — ${i18n.get('youCanStillAdd')} IMO ${imo}</span>`;
                 el.addBtn.disabled = false;
             }
         }, 800);
@@ -878,7 +893,7 @@ function setupImoInput() {
 
 function renderVessels(tracked) {
     if (!tracked || tracked.length === 0) {
-        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🚢</div><p>No vessels tracked yet.</p><small>Add an IMO number above</small></div>`;
+        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🚢</div><p>${i18n.get('noVesselsTracked')}</p><small>${i18n.get('addAnIMO')}</small></div>`;
         return;
     }
     const ORDER = { UNDERWAY: 0, 'AT PORT': 1, 'AT ANCHOR': 2, STALLED: 3, 'DATA PENDING': 4 };
@@ -913,7 +928,7 @@ function renderVessels(tracked) {
     });
 
     if (!items.length) {
-        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>No vessels match this filter.</p></div>`;
+        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>${i18n.get('noMatch')}</p></div>`;
         return;
     }
 
@@ -932,19 +947,19 @@ function renderVessels(tracked) {
             const depthHtml = di ? `<span class="tag depth">⚓ ${di.anchor}</span><span class="tag depth">🏭 ${di.pier}</span>` : '';
             const compat = getPortCompatibility(v.draught_m);
 
-            const sancBanner = sanc ? `<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div><div class="sanction-banner-title">SANCTIONED — ${escapeHtml([...new Set((S.sanctionDetails.get(imo) || []).map(d => d.list))].join(' · ') || 'Sanctions List')}</div><div class="sanction-banner-detail">${escapeHtml((S.sanctionDetails.get(imo) || [])[0]?.name || 'Appears on sanctions list')}</div></div></div>` : '';
+            const sancBanner = sanc ? `<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div><div class="sanction-banner-title">${i18n.get('sanctionedVessel')} — ${escapeHtml([...new Set((S.sanctionDetails.get(imo) || []).map(d => d.list))].join(' · ') || i18n.get('sanctionsList'))}</div><div class="sanction-banner-detail">${escapeHtml((S.sanctionDetails.get(imo) || [])[0]?.name || i18n.get('appearsOnSanctions'))}</div></div></div>` : '';
 
             const compatHtml = compat ? `
                 <div class="section-divider"></div>
-                <div class="section-mini-title">Port Compatibility · Draught ${compat[0].draught}m</div>
+                <div class="section-mini-title">${i18n.get('portCompatibility')} ${compat[0].draught}m</div>
                 <div class="compat-grid">
-                    ${compat.map(p => `<div class="compat-port">${CI[p.status] || CI.unknown}<div><div class="compat-port-name">${escapeHtml(p.name)}</div><div class="compat-port-depth">${p.pierDepth != null ? 'Pier ' + p.pierDepth + 'm / Anch ' + p.anchorDepth + 'm' : 'No depth data'}</div></div></div>`).join('')}
+                    ${compat.map(p => `<div class="compat-port">${CI[p.status] || CI.unknown}<div><div class="compat-port-name">${escapeHtml(p.name)}</div><div class="compat-port-depth">${p.pierDepth != null ? i18n.get('pier') + ' ' + p.pierDepth + 'm / ' + i18n.get('anch') + ' ' + p.anchorDepth + 'm' : i18n.get('noDepthData')}</div></div></div>`).join('')}
                 </div>` : '';
 
             const notesHtml = `
                 <div class="section-divider"></div>
-                <div class="section-mini-title">📋 Notes <span id="notes-saved-${imo}" class="notes-saved">✓ Saved</span></div>
-                <textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="Agent contact, cargo, special instructions...">${escapeHtml(getNotes(imo))}</textarea>`;
+                <div class="section-mini-title">📋 ${i18n.get('notes')} <span id="notes-saved-${imo}" class="notes-saved">✓ ${i18n.get('saved')}</span></div>
+                <textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="${i18n.get('notesPlaceholder')}">${escapeHtml(getNotes(imo))}</textarea>`;
 
             const card = document.createElement('div');
             card.className = `vessel-card ${sanc ? 'sanctioned' : prio ? 'priority' : sc}`;
@@ -957,21 +972,21 @@ function renderVessels(tracked) {
                             <div>
                                 <div class="vessel-name-block">
                                     ${fh}
-                                    <span class="vessel-name">${escapeHtml(v.name || 'Loading...')}</span>
-                                    ${sanc ? `<span class="tag sanction-tag">🚨 Sanctioned</span>` : prio ? `<span style="font-size:.82rem;">🚩</span>` : ''}
+                                    <span class="vessel-name">${escapeHtml(v.name || i18n.get('loading'))}</span>
+                                    ${sanc ? `<span class="tag sanction-tag">🚨 ${i18n.get('sanctioned')}</span>` : prio ? `<span style="font-size:.82rem;">🚩</span>` : ''}
                                     ${loaHtml}
                                 </div>
                                 <div class="vessel-imo">IMO ${imo}</div>
                             </div>
-                            <span class="tag ${tc}">${status}</span>
+                            <span class="tag ${tc}">${i18n.get(status.toLowerCase()) || status}</span>
                         </div>
                         ${isPending
-                    ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>Waiting for data...</div>`
+                    ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>${i18n.get('waitingForData')}...</div>`
                     : `<div class="vessel-meta">
-                            <div class="meta-row"><span class="meta-label">Signal</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div>
-                            <div class="meta-row"><span class="meta-label">Dest.</span><span class="meta-val">${escapeHtml(v.destination || '—')}</span></div>
-                            <div class="meta-row"><span class="meta-label">Position</span><span class="meta-val"><span class="tag position">${v.lat != null ? Number(v.lat).toFixed(3) : '—'}, ${v.lon != null ? Number(v.lon).toFixed(3) : '—'}</span></span></div>
-                            <div class="meta-row"><span class="meta-label">ETA</span><span class="meta-val">${etaR ? `<span class="eta-countdown ${etaR.cls}" data-eta="${escapeHtml(v.eta_utc || '')}">${etaR.text}</span>` : (formatLocalTime(v.eta_utc) || '—')}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('signal')}</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('dest')}</span><span class="meta-val">${escapeHtml(v.destination || '—')}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('position')}</span><span class="meta-val"><span class="tag position">${v.lat != null ? Number(v.lat).toFixed(3) : '—'}, ${v.lon != null ? Number(v.lon).toFixed(3) : '—'}</span></span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('eta')}</span><span class="meta-val">${etaR ? `<span class="eta-countdown ${etaR.cls}" data-eta="${escapeHtml(v.eta_utc || '')}">${etaR.text}</span>` : (formatLocalTime(v.eta_utc) || '—')}</span></div>
                         </div>
                         <div class="tag-row">
                             ${v.sog != null ? `<span class="tag speed">⚡ ${Number(v.sog).toFixed(1)} kn</span>` : ''}
@@ -981,38 +996,38 @@ function renderVessels(tracked) {
                             ${v.destination_distance_nm ? `<span class="tag distance">🎯 ${Number(v.destination_distance_nm).toFixed(0)} nm</span>` : ''}
                             <div id="weather-${imo}" style="display:contents;"></div>
                         </div>
-                        <div class="hint-text">Tap to expand · ${escapeHtml(v.flag || '—')}</div>`
+                        <div class="hint-text">${i18n.get('tapToExpand')} · ${escapeHtml(v.flag || '—')}</div>`
                 }
                     </div>
                 </div>
                 <div id="details-${imo}" class="vessel-expanded">
-                    <div class="section-mini-title">📋 Vessel Details</div>
+                    <div class="section-mini-title">📋 ${i18n.get('details')}</div>
                     <div class="expanded-grid">
-                        <div class="exp-item"><div class="exp-label">Ship Type</div><div class="exp-val">${escapeHtml(v.ship_type || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">DWT</div><div class="exp-val">${v.deadweight_t ? formatNumber(Number(v.deadweight_t) / 1000) + 'k t' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Gross Tonnage</div><div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() + ' t' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Built</div><div class="exp-val">${escapeHtml(v.year_of_build || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">Length</div><div class="exp-val">${v.length_overall_m ? Number(v.length_overall_m).toFixed(1) + ' m' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Beam</div><div class="exp-val">${v.beam_m ? Number(v.beam_m).toFixed(1) + ' m' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Draught</div><div class="exp-val">${escapeHtml(v.draught_m || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('shipType')}</div><div class="exp-val">${escapeHtml(v.ship_type || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('dwt')}</div><div class="exp-val">${v.deadweight_t ? formatNumber(Number(v.deadweight_t) / 1000) + 'k t' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('grossTonnage')}</div><div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() + ' t' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('built')}</div><div class="exp-val">${escapeHtml(v.year_of_build || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('length')}</div><div class="exp-val">${v.length_overall_m ? Number(v.length_overall_m).toFixed(1) + ' m' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('beam')}</div><div class="exp-val">${v.beam_m ? Number(v.beam_m).toFixed(1) + ' m' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('draught')}</div><div class="exp-val">${escapeHtml(v.draught_m || '—')}</div></div>
                         <div class="exp-item"><div class="exp-label">MMSI</div><div class="exp-val">${escapeHtml(v.mmsi || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">AIS Source</div><div class="exp-val">${escapeHtml(v.ais_source || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">Flag</div><div class="exp-val">${escapeHtml(v.flag || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('aisSourceLabel')}</div><div class="exp-val">${escapeHtml(v.ais_source || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('flagLabel')}</div><div class="exp-val">${escapeHtml(v.flag || '—')}</div></div>
                     </div>
                     ${compatHtml}
                     ${notesHtml}
                 </div>
                 <div class="vessel-footer">
-                    <span class="vessel-footer-meta">AIS: ${escapeHtml(v.ais_source || '—')} · ${ageData.ageText}</span>
+                    <span class="vessel-footer-meta">${i18n.get('aisSource')}: ${escapeHtml(v.ais_source || '—')} · ${ageData.ageText}</span>
                     <div class="vessel-footer-actions">
-                        <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? '🚩 Priority' : '⑁ Flag'}</button>
-                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">Remove</button>
+                        <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? '🚩 ' + i18n.get('priorityFlagged') : '⑁ ' + i18n.get('flagPriority')}</button>
+                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">${i18n.get('remove')}</button>
                     </div>
                 </div>
             `;
             el.vesselsContainer.appendChild(card);
 
-            if (v.lat != null && v.lon != null) fetchAndRenderWeather(imo, v.lat, v.lon);
+            if (v.lat != null && v.lon != null) queueWeatherFetch(imo, v.lat, v.lon);
         } catch (err) {
             console.warn(`Card render error IMO ${imo}:`, err);
         }
@@ -1031,13 +1046,15 @@ function initMap() {
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
     }).addTo(S.mapInstance);
+    S.mapClusterGroup = L.markerClusterGroup({ maxClusterRadius: 30, disableClusteringAtZoom: 6 });
+    S.mapInstance.addLayer(S.mapClusterGroup);
     S.mapInitialized = true;
     updateMapMarkers();
 }
 
 function updateMapMarkers() {
     if (!S.mapInitialized) return;
-    S.mapMarkers.forEach(m => m.remove());
+    S.mapClusterGroup.clearLayers();
     S.mapMarkers = [];
     const colors = { UNDERWAY: '#10b981', 'AT PORT': '#0ea5e9', 'AT ANCHOR': '#f59e0b', STALLED: '#ef4444', 'DATA PENDING': '#4e6a84' };
     for (const imo of S.trackedImosCache) {
@@ -1051,9 +1068,9 @@ function updateMapMarkers() {
             iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -12]
         });
         const age = formatSignalAge(v.last_pos_utc), isSanc = S.sanctionedImos.has(imo);
-        const popup = `<div style="font-family:sans-serif;min-width:185px;">${isSanc ? `<div style="background:rgba(255,69,0,.15);border:1px solid rgba(255,69,0,.3);border-radius:5px;padding:4px 8px;margin-bottom:7px;font-size:.7rem;color:#ff4500;font-weight:700;">🚨 SANCTIONED</div>` : ''}<div style="font-weight:700;font-size:.9rem;color:#fff;margin-bottom:3px;">${escapeHtml(v.name || 'IMO ' + imo)}</div><div style="font-size:.7rem;color:#94a3b8;margin-bottom:7px;">IMO ${imo} · ${escapeHtml(v.flag || '—')}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:.74rem;"><div><span style="color:#64748b;">Status</span><br><strong style="color:${color};">${status}</strong></div><div><span style="color:#64748b;">Signal</span><br><strong>${age.ageText}</strong></div><div><span style="color:#64748b;">Speed</span><br><strong>${v.sog != null ? Number(v.sog).toFixed(1) + ' kn' : '—'}</strong></div><div><span style="color:#64748b;">Course</span><br><strong>${v.cog != null ? Number(v.cog).toFixed(0) + '°' : '—'}</strong></div></div>${v.destination ? `<div style="margin-top:6px;font-size:.7rem;"><span style="color:#64748b;">Dest: </span><strong>${escapeHtml(v.destination)}</strong></div>` : ''}</div>`;
+        const popup = `<div style="font-family:sans-serif;min-width:185px;">${isSanc ? `<div style="background:rgba(255,69,0,.15);border:1px solid rgba(255,69,0,.3);border-radius:5px;padding:4px 8px;margin-bottom:7px;font-size:.7rem;color:#ff4500;font-weight:700;">🚨 ${i18n.get('sanctioned')}</div>` : ''}<div style="font-weight:700;font-size:.9rem;color:#fff;margin-bottom:3px;">${escapeHtml(v.name || 'IMO ' + imo)}</div><div style="font-size:.7rem;color:#94a3b8;margin-bottom:7px;">IMO ${imo} · ${escapeHtml(v.flag || '—')}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:.74rem;"><div><span style="color:#64748b;">${i18n.get('status')}</span><br><strong style="color:${color};">${i18n.get(status.toLowerCase()) || status}</strong></div><div><span style="color:#64748b;">${i18n.get('signal')}</span><br><strong>${age.ageText}</strong></div><div><span style="color:#64748b;">${i18n.get('speed')}</span><br><strong>${v.sog != null ? Number(v.sog).toFixed(1) + ' kn' : '—'}</strong></div><div><span style="color:#64748b;">${i18n.get('course')}</span><br><strong>${v.cog != null ? Number(v.cog).toFixed(0) + '°' : '—'}</strong></div></div>${v.destination ? `<div style="margin-top:6px;font-size:.7rem;"><span style="color:#64748b;">${i18n.get('dest')}: </span><strong>${escapeHtml(v.destination)}</strong></div>` : ''}</div>`;
         const marker = L.marker([Number(v.lat), Number(v.lon)], { icon }).bindPopup(popup);
-        marker.addTo(S.mapInstance);
+        S.mapClusterGroup.addLayer(marker);
         S.mapMarkers.push(marker);
     }
 }
@@ -1104,7 +1121,7 @@ function mobileNav(tab) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function exportCSV() {
-    const h = ['IMO', 'Vessel', 'Status', 'Sanctioned', 'Priority', 'Flag', 'Lat', 'Lon', 'Speed(kn)', 'Course', 'Destination', 'Signal Age', 'DWT', 'Ship Type', 'LOA(m)', 'Built', 'Draught(m)'];
+    const h = ['IMO', i18n.get('vessel'), i18n.get('status'), i18n.get('sanctioned'), i18n.get('priority'), i18n.get('flag'), i18n.get('lat'), i18n.get('lon'), i18n.get('speedKn'), i18n.get('course'), i18n.get('destination'), i18n.get('signalAge'), i18n.get('dwt'), i18n.get('shipType'), i18n.get('loaM'), i18n.get('built'), i18n.get('draughtM')];
     const rows = S.trackedImosCache.map(imo => {
         const v = S.vesselsDataMap.get(imo) || {}, a = formatSignalAge(v.last_pos_utc);
         return [imo, v.name || '', getVesselStatus(v), S.sanctionedImos.has(imo) ? 'YES' : 'NO', isPriority(imo) ? 'YES' : 'NO', v.flag || '', v.lat || '', v.lon || '', v.sog != null ? Number(v.sog).toFixed(1) : '', v.cog != null ? Number(v.cog).toFixed(0) : '', v.destination || '', a.ageText, v.deadweight_t || '', v.ship_type || '', v.length_overall_m || '', v.year_of_build || '', v.draught_m || ''];
@@ -1113,7 +1130,7 @@ function exportCSV() {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     Object.assign(document.createElement('a'), { href: url, download: `fleet_${new Date().toISOString().slice(0, 10)}.csv` }).click();
     URL.revokeObjectURL(url);
-    updateStatus('Fleet report exported', 'success');
+    updateStatus(i18n.get('exported'), 'success');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1126,21 +1143,40 @@ function tickClock() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PULL TO REFRESH
+// PULL TO REFRESH (improved)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function initPullToRefresh() {
     let startY = 0, pulling = false;
-    document.addEventListener('touchstart', e => { if (window.scrollY === 0) { startY = e.touches[0].clientY; pulling = true; } }, { passive: true });
-    document.addEventListener('touchmove', e => { if (!pulling) return; if (e.touches[0].clientY - startY > 60 && el.ptrIndicator) { el.ptrIndicator.classList.add('show'); el.ptrIndicator.textContent = '↓ Release to refresh'; } }, { passive: true });
+    const ptr = el.ptrIndicator;
+    if (!ptr) return;
+    document.addEventListener('touchstart', e => {
+        if (window.scrollY === 0) {
+            startY = e.touches[0].clientY;
+            pulling = true;
+        }
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+        if (!pulling) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy > 0) {
+            e.preventDefault(); // prevent browser pull-to-refresh
+            if (dy > 60) {
+                ptr.classList.add('show');
+                ptr.textContent = i18n.get('releaseToRefresh');
+            }
+        }
+    }, { passive: false });
     document.addEventListener('touchend', e => {
         if (!pulling) return;
         pulling = false;
         const dy = e.changedTouches[0].clientY - startY;
-        if (dy > 60 && el.ptrIndicator) {
-            el.ptrIndicator.textContent = '↻ Refreshing...';
-            loadData().then(() => el.ptrIndicator.classList.remove('show'));
-        } else if (el.ptrIndicator) el.ptrIndicator.classList.remove('show');
+        if (dy > 60) {
+            ptr.textContent = i18n.get('refreshing');
+            loadData().then(() => ptr.classList.remove('show'));
+        } else {
+            ptr.classList.remove('show');
+        }
     });
 }
 
@@ -1149,10 +1185,9 @@ function initPullToRefresh() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function init() {
-    console.log('🚢 VesselTracker v5.5 — Final');
+    console.log('🚢 VesselTracker v5.5 — Fully fixed & translated');
 
-    // i18n: translations.js already called i18n.init() via its own DOMContentLoaded.
-    // Only install a shim if translations.js failed to load.
+    // Ensure i18n exists (should have been loaded from translations.js)
     if (typeof i18n === 'undefined') {
         window.i18n = {
             currentLang: localStorage.getItem('lang') || 'EN',
@@ -1172,7 +1207,7 @@ function init() {
     updateAlertBadge();
 
     // Load cache immediately
-    if (loadCachedData()) updateStatus('Loaded from cache', 'success');
+    if (loadCachedData()) updateStatus(i18n.get('loadedFromCache'), 'success');
 
     // IMO input
     setupImoInput();
@@ -1234,14 +1269,15 @@ function init() {
     // Language toggle
     const langToggle = document.getElementById('langToggle');
     if (langToggle) {
-        // Set initial button label to reflect the *other* language (what you'd switch to)
         langToggle.textContent = i18n.currentLang === 'FR' ? 'EN' : 'FR';
         langToggle.addEventListener('click', () => {
             const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
-            i18n.setLang(newLang);               // calls updateDOM() for all data-i18n elements
+            i18n.setLang(newLang);
             langToggle.textContent = newLang === 'FR' ? 'EN' : 'FR';
-            if (S.lastDataModified) updateLastModified(S.lastDataModified); // re-render date in new locale
+            if (S.lastDataModified) updateLastModified(S.lastDataModified);
             renderVessels(S.trackedImosCache);
+            updateFleetKPI(S.trackedImosCache);
+            updateStatus(i18n.get('languageChanged'), 'success');
         });
     }
 
@@ -1274,7 +1310,7 @@ function init() {
     checkApiStatus();
     loadSanctionsLists().catch(e => {
         console.warn('Sanctions:', e);
-        if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ Sanctions unavailable</span>`;
+        if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ ${i18n.get('sanctionsUnavailable')}</span>`;
     });
 
     // Auto-refresh
@@ -1287,9 +1323,17 @@ if (document.readyState === 'loading') {
     init();
 }
 
-// PWA Service Worker
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register(
-        'data:application/javascript,self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("fetch",e=>e.respondWith(fetch(e.request).catch(()=>new Response("Offline"))))'
-    ).catch(() => { });
-}
+// Expose functions to global scope for onclick handlers
+window.toggleDetails = toggleDetails;
+window.removeIMO = removeIMO;
+window.togglePriority = togglePriority;
+window.onNoteInput = onNoteInput;
+window.toggleView = toggleView;
+window.exportCSV = exportCSV;
+window.mobileNav = mobileNav;
+window.toggleAlertPanel = toggleAlertPanel;
+window.closeAlertPanel = closeAlertPanel;
+window.markAllAlertsRead = markAllAlertsRead;
+window.clearAlerts = clearAlerts;
+window.applyMobileFilters = applyMobileFilters;
+window.closeMobileFilter = closeMobileFilter;
