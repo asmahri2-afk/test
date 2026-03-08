@@ -422,12 +422,13 @@ function saveToLocalStorage() {
     } catch (e) { console.warn(e); }
 }
 
-function loadCachedData() {
+function loadCachedData(allowStale = false) {
     try {
         const raw = localStorage.getItem('vt_cache');
         if (!raw) return false;
         const data = JSON.parse(raw);
-        if (Date.now() - data.timestamp > 3600000) return false;
+        const maxAge = allowStale ? 86400000 : 3600000; // 24h stale fallback vs 1h normal
+        if (Date.now() - data.timestamp > maxAge) return false;
         S.vesselsDataMap = new Map(data.vessels || []);
         S.trackedImosCache = data.tracked || [];
         if (S.trackedImosCache.length > 0) { renderVessels(S.trackedImosCache); return true; }
@@ -506,10 +507,26 @@ async function checkApiStatus() {
 
 async function fetchGitHubData(path, fallback = null) {
     const url = `${CONFIG.RAW_BASE}${path}?_=${Date.now()}`;
-    const res = await fetchWithTimeout(url, { cache: 'no-cache' }, 10000);
-    if (!res.ok) throw new Error(`GitHub ${res.status}: ${path}`);
+    let res;
+    try {
+        res = await fetchWithTimeout(url, { cache: 'no-cache' }, 10000);
+    } catch (e) {
+        // Distinguish timeout (AbortError) from pure network failure
+        const msg = e.name === 'AbortError'
+            ? `Timed out fetching ${path} — check your connection`
+            : `Network error fetching ${path}: ${e.message}`;
+        throw new Error(msg);
+    }
+    if (!res.ok) throw new Error(`File not found (HTTP ${res.status}): ${path}`);
     try { const data = await res.json(); return { data, sha: null, source: 'raw' }; }
     catch { return { data: fallback, sha: null, source: 'error' }; }
+}
+
+// Like fetchGitHubData but NEVER throws — returns fallback on any error.
+// Use for optional/auxiliary files so they don't kill the main load.
+async function fetchGitHubDataSafe(path, fallback = null) {
+    try { return await fetchGitHubData(path, fallback); }
+    catch (e) { console.warn(`Optional file unavailable (${path}):`, e.message); return { data: fallback, sha: null, source: 'missing' }; }
 }
 
 // Fetch the real last-commit timestamp for a file via the GitHub Commits API.
@@ -570,13 +587,31 @@ async function loadData() {
     S.isApiBusy = true;
     if (el.refreshButton) el.refreshButton.disabled = true;
     updateStatus('Refreshing...', 'info');
+
+    // Show a spinner inside the vessels list so the user knows something is happening
+    const hasCachedVessels = S.trackedImosCache.length > 0;
+    if (!hasCachedVessels && el.vesselsContainer) {
+        el.vesselsContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="spinner" style="width:28px;height:28px;margin:0 auto 14px;"></div>
+                <p style="color:var(--text-soft);">Loading fleet data…</p>
+                <small style="font-family:var(--mono);color:var(--accent);">Connecting to GitHub</small>
+            </div>`;
+    }
+
     try {
-        const [ti, vi, si, pi] = await Promise.all([
+        // Required files — a failure here is a real error
+        const [ti, vi] = await Promise.all([
             fetchGitHubData(CONFIG.TRACKED_PATH, []),
             fetchGitHubData(CONFIG.VESSELS_PATH, {}),
-            fetchGitHubData(CONFIG.STATIC_CACHE_PATH, {}),
-            fetchGitHubData(CONFIG.PORTS_PATH, {})
         ]);
+
+        // Optional/auxiliary files — missing or broken ones should never kill the load
+        const [si, pi] = await Promise.all([
+            fetchGitHubDataSafe(CONFIG.STATIC_CACHE_PATH, {}),
+            fetchGitHubDataSafe(CONFIG.PORTS_PATH, {}),
+        ]);
+
         const tracked = (Array.isArray(ti.data) ? ti.data : ti.data?.tracked_imos || []).map(String);
         S.trackedImosCache = tracked;
         let vl = [];
@@ -593,7 +628,7 @@ async function loadData() {
         S.vesselsDataMap = nm;
         S.staticCache = new Map(Object.entries(si.data || {}));
         S.portsData = pi.data || {};
-        S.lastDataModified = new Date(); // placeholder until commit API responds
+        S.lastDataModified = new Date();
         saveToLocalStorage();
         generateAlerts(nm, tracked);
         updateAlertBadge();
@@ -604,17 +639,29 @@ async function loadData() {
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
         updateStatus(`Fleet loaded — ${tracked.length} vessels`, 'success');
-        // Fetch real last-commit time from GitHub API (non-blocking, updates UI when ready)
+        // Fetch real last-commit time from GitHub API (non-blocking)
         fetchFileLastCommit(CONFIG.VESSELS_PATH).then(date => {
             updateLastModified(date || new Date());
             if (date) updateSystemHealth(date.getTime(), vl.length, vi.source);
         });
     } catch (err) {
         console.error('Load error:', err);
-        if (!loadCachedData()) {
+        // Try stale cache first (up to 24h old — better than nothing)
+        const gotCache = loadCachedData(true);
+        if (gotCache) {
+            updateStatus('Showing cached data — ' + err.message, 'warning');
+        } else {
             updateStatus(`Load failed: ${err.message}`, 'error');
-            if (el.vesselsContainer) el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p style="color:var(--danger);">${escapeHtml(err.message)}</p><small>Check network connection</small></div>`;
-        } else updateStatus('Showing cached data (offline)', 'warning');
+            if (el.vesselsContainer) el.vesselsContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">⚠️</div>
+                    <p style="color:var(--danger);margin-bottom:6px;">${escapeHtml(err.message)}</p>
+                    <small style="display:block;margin-bottom:16px;">Check your connection or try again</small>
+                    <button class="btn-primary" onclick="loadData()" style="font-size:.78rem;padding:8px 18px;">
+                        🔄 Retry
+                    </button>
+                </div>`;
+        }
     } finally {
         S.isApiBusy = false;
         if (el.refreshButton) el.refreshButton.disabled = false;
@@ -769,8 +816,8 @@ async function addVessel() {
 
 function removeIMO(imo) {
     const name = S.vesselsDataMap.get(imo)?.name || `IMO ${imo}`;
-    el.confirmText.textContent = `Remove "${name}" (IMO ${imo}) from fleet tracking?`;
-    el.confirmModal.classList.remove('hidden');
+    if (el.confirmText) el.confirmText.textContent = `Remove "${name}" (IMO ${imo}) from fleet tracking?`;
+    if (el.confirmModal) el.confirmModal.classList.remove('hidden');
     S.vesselToRemove = imo;
 }
 
@@ -1168,128 +1215,136 @@ function initPullToRefresh() {
 function init() {
     console.log('🚢 VesselTracker v5.5 — Final');
 
-    // i18n: translations.js already called i18n.init() via its own DOMContentLoaded.
-    // Only install a shim if translations.js failed to load.
-    if (typeof i18n === 'undefined') {
-        window.i18n = {
-            currentLang: localStorage.getItem('lang') || 'EN',
-            get(key) { return key; },
-            setLang(l) { this.currentLang = l; localStorage.setItem('lang', l); },
-            updateDOM() { },
-            init() { }
-        };
-    }
+    try {
+        // i18n: translations.js already called i18n.init() via its own DOMContentLoaded.
+        // Only install a shim if translations.js failed to load.
+        if (typeof i18n === 'undefined') {
+            window.i18n = {
+                currentLang: localStorage.getItem('lang') || 'EN',
+                get(key) { return key; },
+                setLang(l) { this.currentLang = l; localStorage.setItem('lang', l); },
+                updateDOM() { },
+                init() { }
+            };
+        }
 
-    // Sort selects
-    if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
-    if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
+        // Sort selects
+        if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
+        if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
 
-    // Render alerts
-    renderAlerts();
-    updateAlertBadge();
+        // Render alerts
+        renderAlerts();
+        updateAlertBadge();
 
-    // Load cache immediately
-    if (loadCachedData()) updateStatus('Loaded from cache', 'success');
+        // Load cache immediately
+        if (loadCachedData()) updateStatus('Loaded from cache', 'success');
 
-    // IMO input
-    setupImoInput();
+        // IMO input
+        setupImoInput();
 
-    // Add vessel button
-    if (el.addBtn) el.addBtn.addEventListener('click', addVessel);
-    if (el.imoInput) {
-        el.imoInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !el.addBtn?.disabled) addVessel(); });
-    }
+        // Add vessel button
+        if (el.addBtn) el.addBtn.addEventListener('click', addVessel);
+        if (el.imoInput) {
+            el.imoInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !el.addBtn?.disabled) addVessel(); });
+        }
 
-    // Search
-    if (el.searchInput) {
-        el.searchInput.addEventListener('input', () => {
-            S.searchQuery = el.searchInput.value.trim().toLowerCase();
-            renderVessels(S.trackedImosCache);
+        // Search
+        if (el.searchInput) {
+            el.searchInput.addEventListener('input', () => {
+                S.searchQuery = el.searchInput.value.trim().toLowerCase();
+                renderVessels(S.trackedImosCache);
+            });
+        }
+
+        // Filter chips
+        document.querySelectorAll('.chip[data-filter]').forEach(chip => {
+            chip.addEventListener('click', () => setFilter(chip.dataset.filter, chip));
         });
-    }
 
-    // Filter chips
-    document.querySelectorAll('.chip[data-filter]').forEach(chip => {
-        chip.addEventListener('click', () => setFilter(chip.dataset.filter, chip));
-    });
+        // Age filter (desktop)
+        if (el.ageFilter) {
+            el.ageFilter.addEventListener('change', () => {
+                S.currentAgeFilter = el.ageFilter.value;
+                if (el.ageFilterMobile) el.ageFilterMobile.value = S.currentAgeFilter;
+                renderVessels(S.trackedImosCache);
+            });
+        }
 
-    // Age filter (desktop)
-    if (el.ageFilter) {
-        el.ageFilter.addEventListener('change', () => {
-            S.currentAgeFilter = el.ageFilter.value;
-            if (el.ageFilterMobile) el.ageFilterMobile.value = S.currentAgeFilter;
-            renderVessels(S.trackedImosCache);
-        });
-    }
+        // Sort select (desktop)
+        if (el.sortSelect) {
+            el.sortSelect.addEventListener('change', () => {
+                S.currentSortKey = el.sortSelect.value;
+                localStorage.setItem('vt_sort', S.currentSortKey);
+                if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
+                renderVessels(S.trackedImosCache);
+            });
+        }
 
-    // Sort select (desktop)
-    if (el.sortSelect) {
-        el.sortSelect.addEventListener('change', () => {
-            S.currentSortKey = el.sortSelect.value;
-            localStorage.setItem('vt_sort', S.currentSortKey);
-            if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
-            renderVessels(S.trackedImosCache);
-        });
-    }
+        // View toggles (header buttons)
+        if (el.viewListBtn) el.viewListBtn.addEventListener('click', () => toggleView('list'));
+        if (el.viewMapBtn) el.viewMapBtn.addEventListener('click', () => toggleView('map'));
 
-    // View toggles (header buttons)
-    if (el.viewListBtn) el.viewListBtn.addEventListener('click', () => toggleView('list'));
-    if (el.viewMapBtn) el.viewMapBtn.addEventListener('click', () => toggleView('map'));
+        // Refresh button
+        if (el.refreshButton) el.refreshButton.addEventListener('click', loadData);
 
-    // Refresh button
-    if (el.refreshButton) el.refreshButton.addEventListener('click', loadData);
+        // Alerts — guarded: a null here must NOT kill the rest of init()
+        if (el.alertOverlay) el.alertOverlay.addEventListener('click', closeAlertPanel);
+        const alertsBtn = document.getElementById('alertsBtn');
+        if (alertsBtn) alertsBtn.addEventListener('click', toggleAlertPanel);
 
-    // Alerts
-    el.alertOverlay.addEventListener('click', closeAlertPanel);
-    const alertsBtn = document.getElementById('alertsBtn');
-    if (alertsBtn) alertsBtn.addEventListener('click', toggleAlertPanel);
+        // Confirm modal
+        if (el.confirmCancel) el.confirmCancel.addEventListener('click', () => { el.confirmModal?.classList.add('hidden'); S.vesselToRemove = null; });
+        if (el.confirmOk) el.confirmOk.addEventListener('click', () => { if (S.vesselToRemove) removeIMOConfirmed(S.vesselToRemove); el.confirmModal?.classList.add('hidden'); });
 
-    // Confirm modal
-    if (el.confirmCancel) el.confirmCancel.addEventListener('click', () => { el.confirmModal.classList.add('hidden'); S.vesselToRemove = null; });
-    if (el.confirmOk) el.confirmOk.addEventListener('click', () => { if (S.vesselToRemove) removeIMOConfirmed(S.vesselToRemove); el.confirmModal.classList.add('hidden'); });
-
-    // Language toggle — show current language (not target), with visual indicator
-    const langToggle = document.getElementById('langToggle');
-    if (langToggle) {
-        const updateLangBtn = () => {
-            langToggle.textContent = i18n.currentLang === 'FR' ? '🇫🇷 FR' : '🇬🇧 EN';
-            langToggle.title = i18n.currentLang === 'FR' ? 'Switch to English' : 'Passer en français';
-        };
-        updateLangBtn();
-        langToggle.addEventListener('click', () => {
-            const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
-            i18n.setLang(newLang);
+        // Language toggle — show current language (not target), with visual indicator
+        const langToggle = document.getElementById('langToggle');
+        if (langToggle) {
+            const updateLangBtn = () => {
+                langToggle.textContent = i18n.currentLang === 'FR' ? '🇫🇷 FR' : '🇬🇧 EN';
+                langToggle.title = i18n.currentLang === 'FR' ? 'Switch to English' : 'Passer en français';
+            };
             updateLangBtn();
-            if (S.lastDataModified) updateLastModified(S.lastDataModified);
-            renderVessels(S.trackedImosCache);
-        });
+            langToggle.addEventListener('click', () => {
+                const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
+                i18n.setLang(newLang);
+                updateLangBtn();
+                if (S.lastDataModified) updateLastModified(S.lastDataModified);
+                renderVessels(S.trackedImosCache);
+            });
+        }
+
+        // Mobile FAB filter
+        if (el.fabFilter) {
+            el.fabFilter.addEventListener('click', () => {
+                document.getElementById('mobileFilterSheet').style.display = 'flex';
+            });
+        }
+
+        // Mobile: hide add card initially
+        if (window.innerWidth < 641 && el.addCard) el.addCard.classList.add('hidden');
+
+        // Responsive FAB visibility
+        const updateFabVisibility = () => {
+            if (el.fabFilter) el.fabFilter.style.display = window.innerWidth < 641 ? 'flex' : 'none';
+        };
+        updateFabVisibility();
+        window.addEventListener('resize', updateFabVisibility);
+
+        // Pull to refresh
+        initPullToRefresh();
+
+        // Clock
+        setInterval(tickClock, 1000);
+        tickClock();
+
+    } catch (initErr) {
+        // If any setup step above throws, log it clearly and continue to data loading.
+        // A broken event listener must never prevent the fleet from loading.
+        console.error('⚠️ VesselTracker init() error (non-fatal):', initErr);
+        updateStatus('UI init error — loading data anyway', 'warning');
     }
 
-    // Mobile FAB filter
-    if (el.fabFilter) {
-        el.fabFilter.addEventListener('click', () => {
-            document.getElementById('mobileFilterSheet').style.display = 'flex';
-        });
-    }
-
-    // Mobile: hide add card initially
-    if (window.innerWidth < 641 && el.addCard) el.addCard.classList.add('hidden');
-
-    // Responsive FAB visibility
-    const updateFabVisibility = () => {
-        if (el.fabFilter) el.fabFilter.style.display = window.innerWidth < 641 ? 'flex' : 'none';
-    };
-    updateFabVisibility();
-    window.addEventListener('resize', updateFabVisibility);
-
-    // Pull to refresh
-    initPullToRefresh();
-
-    // Clock
-    setInterval(tickClock, 1000);
-    tickClock();
-
-    // Data
+    // Data loading is OUTSIDE the try/catch — it must always run.
     loadData();
     checkApiStatus();
     loadSanctionsLists().catch(e => {
