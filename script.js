@@ -862,6 +862,7 @@ async function updateTrackedImos(imo, isAdd) {
 
 function setupImoInput() {
     if (!el.imoInput) return;
+    el.imoInput.addEventListener('input', () => {
         clearTimeout(S.debounceTimer);
         const imo = el.imoInput.value.trim();
         el.namePreview.innerHTML = '';
