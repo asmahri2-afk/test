@@ -250,6 +250,39 @@ function isPriority(imo) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PORT COMPATIBILITY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function getPortDepthInfo(portName) {
+    if (!portName) return null;
+    const port = S.portsData[portName.trim().toUpperCase()];
+    if (!port) return null;
+    const fmt = v => (v && v !== 0) ? `${Number(v).toFixed(1)}m` : 'N/A';
+    return { anchor: fmt(port.anchorage_depth), pier: fmt(port.cargo_pier_depth) };
+}
+
+function getPortCompatibility(draughtStr) {
+    const match = String(draughtStr || '').match(/(\d+\.?\d*)/);
+    if (!match) return null;
+    const draught = parseFloat(match[1]);
+    return [
+        { name: 'Tan Tan', key: 'TAN TAN' },
+        { name: 'Laâyoune', key: 'LAAYOUNE' },
+        { name: 'Dakhla', key: 'DAKHLA' }
+    ].map(p => {
+        const info = S.portsData[p.key];
+        if (!info) return { name: p.name, status: 'unknown', pierDepth: null, anchorDepth: null };
+        const pier = info.cargo_pier_depth || 0, anchor = info.anchorage_depth || 0;
+        let status;
+        if (draught <= pier - 1) status = 'ok';
+        else if (draught <= pier) status = 'marginal';
+        else if (draught <= anchor) status = 'anchor-only';
+        else status = 'incompatible';
+        return { name: p.name, status, pierDepth: pier, anchorDepth: anchor, draught };
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // WEATHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -509,6 +542,105 @@ function toggleDetails(imo) {
     if (el) el.classList.toggle('show');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPORT & VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function exportCSV() {
+    const h = ['IMO', 'Vessel', 'Status', 'Sanctioned', 'Priority', 'Flag', 'Lat', 'Lon', 'Speed(kn)', 'Course', 'Destination', 'Signal Age', 'DWT', 'Ship Type', 'LOA(m)', 'Built', 'Draught(m)'];
+    const rows = S.trackedImosCache.map(imo => {
+        const v = S.vesselsDataMap.get(imo) || {};
+        const a = formatSignalAge(v.last_pos_utc);
+        return [
+            imo,
+            v.name || '',
+            getVesselStatus(v),
+            S.sanctionedImos.has(imo) ? 'YES' : 'NO',
+            isPriority(imo) ? 'YES' : 'NO',
+            v.flag || '',
+            v.lat || '',
+            v.lon || '',
+            v.sog != null ? Number(v.sog).toFixed(1) : '',
+            v.cog != null ? Number(v.cog).toFixed(0) : '',
+            v.destination || '',
+            a.ageText,
+            v.deadweight_t || '',
+            v.ship_type || '',
+            v.length_overall_m || '',
+            v.year_of_build || '',
+            v.draught_m || ''
+        ];
+    });
+    const csv = [h, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    Object.assign(document.createElement('a'), {
+        href: url,
+        download: `fleet_${new Date().toISOString().slice(0, 10)}.csv`
+    }).click();
+    URL.revokeObjectURL(url);
+    updateStatus('Fleet report exported', 'success');
+}
+
+function setSort(key) {
+    S.currentSortKey = key;
+    localStorage.setItem('vt_sort', key);
+    renderVessels(S.trackedImosCache);
+}
+
+function validateIMO(imo) {
+    if (!/^\d{7}$/.test(imo)) return false;
+    const digits = imo.split('').map(Number);
+    const check = digits.slice(0, 6).reduce((sum, d, i) => sum + d * (7 - i), 0) % 10;
+    return check === digits[6];
+}
+
+async function addIMO() {
+    const imo = el.imoInput.value.trim();
+    if (!imo || S.isApiBusy || !/^\d{7}$/.test(imo)) {
+        updateStatus('Invalid IMO — must be 7 digits', 'error');
+        return;
+    }
+    if (!validateIMO(imo)) {
+        updateStatus('Invalid IMO — checksum failed', 'error');
+        return;
+    }
+    if (S.trackedImosCache.includes(imo)) {
+        updateStatus('Already tracked', 'warning');
+        return;
+    }
+    showLoading(`Adding IMO ${imo}...`);
+    await updateTrackedImos(imo, true);
+    pushAlert('added', imo, imo, `IMO ${imo} added to fleet tracking`);
+    if (S.sanctionsLoaded && S.sanctionedImos.has(imo)) {
+        const d = S.sanctionDetails.get(imo) || [];
+        pushAlert('sanctioned', imo, imo, `🚨 SANCTIONED VESSEL added: IMO ${imo} on ${[...new Set(d.map(x => x.list))].join(', ') || 'sanctions list'}`);
+    }
+    if (S.staticCache.has(imo)) {
+        updateStaticCache(imo, S.staticCache.get(imo)).catch(e => console.error('Static cache on add:', e));
+    } else {
+        (async () => {
+            try {
+                let vd = null;
+                for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`, `${CONFIG.RENDER_API}/vessel/${imo}`]) {
+                    try {
+                        const r = await fetchWithTimeout(ep, {}, 5000);
+                        if (r.ok) { vd = await r.json(); break; }
+                    } catch { }
+                }
+                if (vd && vd.found !== false) await updateStaticCache(imo, vd);
+            } catch (e) {
+                console.error('Static cache lookup on add:', e);
+            }
+        })();
+    }
+    hideLoading();
+}
+
+function toggleDetails(imo) {
+    const el = document.getElementById(`details-${imo}`);
+    if (el) el.classList.toggle('show');
+}
+
 function showLoading(msg = 'Loading...') {
     el.loadingText.textContent = msg;
     el.loadingOverlay.classList.remove('hidden');
@@ -575,6 +707,96 @@ async function fetchGitHubData(path, fallback = null) {
     } catch {
         return { data: fallback, sha: null, lastMod: Date.now(), source: 'error' };
     }
+}
+
+async function ghPut(path, data, sha, message) {
+    const url = `${CONFIG.WORKER_URL}/github-write`;
+    const res = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, data, message })
+    }, 15000);
+    if (!res.ok) {
+        const txt = await res.text();
+        let msg = `Write failed: ${res.status}`;
+        if (res.status === 409) msg = 'Conflict — please retry.';
+        else if (res.status === 401 || res.status === 403) msg = 'API auth failed.';
+        else {
+            try {
+                msg += ` — ${JSON.parse(txt).message}`;
+            } catch {
+                msg += ` — ${txt.substring(0, 80)}`;
+            }
+        }
+        throw new Error(msg);
+    }
+    return res.json();
+}
+
+async function updateStaticCache(imo, vd) {
+    const entry = {
+        imo,
+        name: vd.name || vd.vessel_name || `IMO ${imo}`,
+        flag: vd.flag || '-',
+        ship_type: vd.ship_type || '-',
+        length_overall_m: vd.length_overall_m ?? '-',
+        beam_m: vd.beam_m ?? '-',
+        deadweight_t: vd.deadweight_t ?? '-',
+        gross_tonnage: vd.gross_tonnage ?? '-',
+        year_of_build: vd.year_of_build ?? '-'
+    };
+    S.staticCache.set(imo, entry);
+    try {
+        const { data: cache } = await fetchGitHubData(CONFIG.STATIC_CACHE_PATH, {});
+        const existing = cache[imo];
+        if (existing && existing.name && !existing.name.startsWith('IMO ')) {
+            return;
+        }
+        cache[imo] = entry;
+        await ghPut(CONFIG.STATIC_CACHE_PATH, cache, null, `Add static data for IMO ${imo}`);
+    } catch (e) {
+        console.error(`Static cache write FAILED for IMO ${imo}:`, e.message);
+    }
+}
+
+async function updateTrackedImos(imo, isAdd) {
+    S.isApiBusy = true;
+    if (el.refreshButton) el.refreshButton.disabled = true;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            updateStatus(`${isAdd ? 'Adding' : 'Removing'} (${attempt}/2)...`);
+            const result = await fetchGitHubData(CONFIG.TRACKED_PATH, []);
+            let list = (Array.isArray(result.data) ? result.data : result.data?.tracked_imos || []).map(String).filter(Boolean);
+            if (isAdd) {
+                if (!list.includes(imo)) list.push(imo);
+            } else {
+                list = list.filter(x => x !== imo);
+            }
+            list.sort();
+            await ghPut(CONFIG.TRACKED_PATH, list, null, `${isAdd ? 'Add' : 'Remove'} IMO ${imo}`);
+            updateStatus(`${isAdd ? 'Added' : 'Removed'} IMO ${imo}`, 'success');
+            if (isAdd) {
+                el.imoInput.value = '';
+                el.namePreview.innerHTML = '';
+                if (el.addBtn) el.addBtn.disabled = true;
+            }
+            await loadData();
+            break;
+        } catch (error) {
+            if (attempt < 2) {
+                updateStatus('Retrying...', 'warning');
+                await new Promise(r => setTimeout(r, 1000));
+            } else {
+                updateStatus(`Failed: ${error.message}`, 'error');
+                if (isAdd) S.trackedImosCache.push(imo);
+                else S.trackedImosCache = S.trackedImosCache.filter(x => x !== imo);
+                saveToLocalStorage();
+                renderVessels(S.trackedImosCache);
+            }
+        }
+    }
+    S.isApiBusy = false;
+    if (el.refreshButton) el.refreshButton.disabled = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -766,6 +988,7 @@ function renderVessels(tracked) {
             const vFlag = escapeHtml(v.flag || '—');
             const loaHtml = v.length_overall_m ? `<span class="vessel-loa">${Number(v.length_overall_m).toFixed(0)}m${v.draught_m ? ' / ' + v.draught_m : ''}</span>` : '';
             const etaR = formatEtaCountdown(v.eta_utc);
+            const compat = getPortCompatibility(v.draught_m);
             
             const sancBanner = sanc ? `<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div class="sanction-banner-body"><div class="sanction-banner-title">SANCTIONED</div><div class="sanction-banner-detail">${escapeHtml((S.sanctionDetails.get(imo) || [])[0]?.name || 'Sanctions List')}</div></div></div>` : '';
             
@@ -816,6 +1039,21 @@ function renderVessels(tracked) {
                         <div class="exp-item"><div class="exp-label">MMSI</div><div class="exp-val">${escapeHtml(v.mmsi || '—')}</div></div>
                         <div class="exp-item"><div class="exp-label">AIS Source</div><div class="exp-val">${escapeHtml(v.ais_source || '—')}</div></div>
                     </div>
+                    ${compat ? `
+                    <div class="section-divider"></div>
+                    <div class="section-mini-title">⚓ Port Compatibility · Draught ${compat[0].draught}m</div>
+                    <div class="compat-grid">
+                        ${compat.map(p => `<div class="compat-port">
+                            <span class="compat-${p.status}">
+                                ${p.status === 'ok' ? '✔' : p.status === 'marginal' ? '⚠' : p.status === 'anchor-only' ? '⚓' : p.status === 'incompatible' ? '✗' : '?'}
+                            </span>
+                            <div>
+                                <div class="compat-port-name">${escapeHtml(p.name)}</div>
+                                <div class="compat-port-depth">${p.pierDepth != null ? 'Pier ' + p.pierDepth + 'm / Anch ' + p.anchorDepth + 'm' : 'No depth data'}</div>
+                            </div>
+                        </div>`).join('')}
+                    </div>
+                    ` : ''}
                     <div class="section-divider"></div>
                     <div class="section-mini-title">📋 Notes</div>
                     <textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="Agent contact, cargo, special instructions...">${escapeHtml(getNotes(imo))}</textarea>
@@ -933,23 +1171,7 @@ function setupEventListeners() {
     
     // Add vessel
     if (el.addBtn) {
-        el.addBtn.addEventListener('click', async () => {
-            const imo = el.imoInput.value.trim();
-            if (!imo || !/^\d{7}$/.test(imo)) {
-                updateStatus(i18n.currentLang === 'FR' ? 'IMO invalide' : 'Invalid IMO', 'error');
-                return;
-            }
-            if (S.trackedImosCache.includes(imo)) {
-                updateStatus(i18n.currentLang === 'FR' ? 'Déjà suivi' : 'Already tracked', 'warning');
-                return;
-            }
-            S.trackedImosCache.push(imo);
-            el.imoInput.value = '';
-            renderVessels(S.trackedImosCache);
-            updateFleetKPI(S.trackedImosCache);
-            pushAlert('added', imo, imo, `IMO ${imo} added to tracking`);
-            loadData();
-        });
+        el.addBtn.addEventListener('click', addIMO);
     }
     
     // Filters
@@ -1009,6 +1231,10 @@ function setupEventListeners() {
     
     // Refresh
     if (el.refreshButton) el.refreshButton.addEventListener('click', loadData);
+    
+    // Export
+    const exportButton = document.getElementById('exportButton');
+    if (exportButton) exportButton.addEventListener('click', exportCSV);
     
     // Alerts panel
     const alertsBtn = document.getElementById('alertsBtn');

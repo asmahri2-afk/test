@@ -1361,3 +1361,64 @@ textarea:focus {
         font-size: 0.62rem;
     }
 }
+
+/* PORT COMPATIBILITY */
+.compat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.compat-port {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    border-left: 3px solid var(--text-soft);
+}
+
+.compat-port-name {
+    font-weight: 600;
+    color: #fff;
+    font-size: 0.8rem;
+}
+
+.compat-port-depth {
+    font-size: 0.65rem;
+    color: var(--text-soft);
+    margin-top: 2px;
+}
+
+.compat-ok {
+    color: #10b981;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.compat-marginal {
+    color: #f59e0b;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.compat-anchor-only {
+    color: #3b82f6;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.compat-incompatible {
+    color: #ef4444;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.compat-unknown {
+    color: var(--text-soft);
+    font-weight: bold;
+    font-size: 1.2rem;
+}
