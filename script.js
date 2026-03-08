@@ -814,7 +814,7 @@ async function updateTrackedImos(imo, isAdd) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function setupImoInput() {
-    el.imoInput.addEventListener('input', () => {
+    if (!el.imoInput) return;
         clearTimeout(S.debounceTimer);
         const imo = el.imoInput.value.trim();
         el.namePreview.innerHTML = '';
@@ -1082,20 +1082,37 @@ function mobileNav(tab) {
     ['navFleet', 'navMap', 'navAdd', 'navAlerts', 'navExport'].forEach(id => document.getElementById(id)?.classList.remove('active'));
     if (tab === 'fleet') {
         document.getElementById('navFleet')?.classList.add('active');
-        el.addCard.classList.add('hidden');
+        el.addCard?.classList.add('hidden');
         toggleView('list');
     } else if (tab === 'map') {
         document.getElementById('navMap')?.classList.add('active');
-        el.addCard.classList.add('hidden');
+        el.addCard?.classList.add('hidden');
         toggleView('map');
     } else if (tab === 'add') {
         document.getElementById('navAdd')?.classList.add('active');
-        el.addCard.classList.remove('hidden');
-        el.addCard.scrollIntoView({ behavior: 'smooth' });
-        setTimeout(() => el.imoInput.focus(), 300);
+        el.addCard?.classList.remove('hidden');
+        el.addCard?.scrollIntoView({ behavior: 'smooth' });
+        setTimeout(() => el.imoInput?.focus(), 300);
+    } else if (tab === 'alerts') {
+        // Don't permanently highlight — it's a momentary action (panel slides in)
+        // Re-activate the previous tab after the panel closes
+        document.getElementById('navAlerts')?.classList.add('active');
+        toggleAlertPanel();
+        // When panel closes, restore Fleet as active
+        const restoreFleet = () => {
+            document.getElementById('navAlerts')?.classList.remove('active');
+            document.getElementById('navFleet')?.classList.add('active');
+        };
+        el.alertOverlay?.addEventListener('click', restoreFleet, { once: true });
+        document.querySelector('.alert-panel .btn-ghost')?.addEventListener('click', restoreFleet, { once: true });
     } else if (tab === 'export') {
+        // Export is instant — highlight briefly then return to Fleet
         document.getElementById('navExport')?.classList.add('active');
         exportCSV();
+        setTimeout(() => {
+            document.getElementById('navExport')?.classList.remove('active');
+            document.getElementById('navFleet')?.classList.add('active');
+        }, 1200);
     }
 }
 
@@ -1180,7 +1197,7 @@ function init() {
     // Add vessel button
     if (el.addBtn) el.addBtn.addEventListener('click', addVessel);
     if (el.imoInput) {
-        el.imoInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !el.addBtn.disabled) addVessel(); });
+        el.imoInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !el.addBtn?.disabled) addVessel(); });
     }
 
     // Search
@@ -1231,16 +1248,19 @@ function init() {
     if (el.confirmCancel) el.confirmCancel.addEventListener('click', () => { el.confirmModal.classList.add('hidden'); S.vesselToRemove = null; });
     if (el.confirmOk) el.confirmOk.addEventListener('click', () => { if (S.vesselToRemove) removeIMOConfirmed(S.vesselToRemove); el.confirmModal.classList.add('hidden'); });
 
-    // Language toggle
+    // Language toggle — show current language (not target), with visual indicator
     const langToggle = document.getElementById('langToggle');
     if (langToggle) {
-        // Set initial button label to reflect the *other* language (what you'd switch to)
-        langToggle.textContent = i18n.currentLang === 'FR' ? 'EN' : 'FR';
+        const updateLangBtn = () => {
+            langToggle.textContent = i18n.currentLang === 'FR' ? '🇫🇷 FR' : '🇬🇧 EN';
+            langToggle.title = i18n.currentLang === 'FR' ? 'Switch to English' : 'Passer en français';
+        };
+        updateLangBtn();
         langToggle.addEventListener('click', () => {
             const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
-            i18n.setLang(newLang);               // calls updateDOM() for all data-i18n elements
-            langToggle.textContent = newLang === 'FR' ? 'EN' : 'FR';
-            if (S.lastDataModified) updateLastModified(S.lastDataModified); // re-render date in new locale
+            i18n.setLang(newLang);
+            updateLangBtn();
+            if (S.lastDataModified) updateLastModified(S.lastDataModified);
             renderVessels(S.trackedImosCache);
         });
     }
@@ -1253,7 +1273,7 @@ function init() {
     }
 
     // Mobile: hide add card initially
-    if (window.innerWidth < 641) el.addCard.classList.add('hidden');
+    if (window.innerWidth < 641 && el.addCard) el.addCard.classList.add('hidden');
 
     // Responsive FAB visibility
     const updateFabVisibility = () => {
@@ -1287,9 +1307,9 @@ if (document.readyState === 'loading') {
     init();
 }
 
-// PWA Service Worker
+// PWA Service Worker — must use a real file path; data: URIs are blocked by browsers
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register(
-        'data:application/javascript,self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("fetch",e=>e.respondWith(fetch(e.request).catch(()=>new Response("Offline"))))'
-    ).catch(() => { });
+    navigator.serviceWorker.register('sw.js', { scope: './' })
+        .then(reg => console.log('SW registered, scope:', reg.scope))
+        .catch(err => console.warn('SW registration failed:', err));
 }

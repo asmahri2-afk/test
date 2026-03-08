@@ -303,14 +303,37 @@
             .desktop-only{display:none!important;}
             .vessel-meta{grid-template-columns:1fr;}
             #map{height:360px;}
-            .filter-chips{gap:4px;}
-            .chip{padding:4px 8px;font-size:.66rem;}
+            .filter-chips{gap:4px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
+            .filter-chips::-webkit-scrollbar{display:none;}
+            .chip{padding:4px 8px;font-size:.66rem;flex-shrink:0;}
             .kpi-item{min-width:70px;padding:6px 9px;}
             .kpi-value{font-size:1rem;}
             .main-container{padding:10px 10px calc(var(--bottom-h) + 14px + env(safe-area-inset-bottom));}
+            /* Stack add-vessel form on mobile */
+            .add-vessel-form{flex-direction:column;}
+            .add-vessel-form .input-field{width:100%;}
+            .add-vessel-form .btn-primary{width:100%;justify-content:center;}
+            /* Better touch targets */
+            .icon-btn{min-width:40px;min-height:40px;}
+            .nav-item{padding:6px 8px;min-width:52px;}
+            /* Header adjustments */
+            .header-right{gap:4px;}
+            .brand-text h1{font-size:.82rem;}
+            .brand-text span{font-size:.55rem;}
+            /* Vessel footer stacks */
+            .vessel-footer{flex-direction:column;align-items:flex-start;gap:6px;}
+            .vessel-footer-actions{width:100%;justify-content:flex-end;}
+            /* Expanded grid single col */
+            .expanded-grid{grid-template-columns:1fr 1fr;}
+            /* Status bar wraps */
+            .status-bar{flex-wrap:wrap;gap:4px;}
         }
         @media(min-width:641px){.mobile-only{display:none!important;}}
-        @media(max-width:400px){.add-vessel-form{flex-direction:column;}.vessel-footer-actions{width:100%;justify-content:flex-end;}}
+        @media(max-width:400px){
+            .expanded-grid{grid-template-columns:1fr;}
+            .header-right .icon-btn:not(#alertsBtn):not(#refreshButton){display:none;}
+            .brand-text h1{font-size:.75rem;}
+        }
     </style>
 </head>
 <body>
@@ -535,31 +558,31 @@
     <div id="mobileFilterSheet" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.6);" onclick="closeMobileFilter(event)">
         <div style="position:absolute;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));max-height:80vh;overflow-y:auto;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                <h3 style="font-size:.85rem;font-weight:700;color:#fff;">Filters &amp; Sort</h3>
-                <button class="btn-ghost" style="padding:4px 8px;" onclick="document.getElementById('mobileFilterSheet').style.display='none'">✕</button>
+                <h3 style="font-size:.85rem;font-weight:700;color:#fff;" data-i18n="filtersSort">Filters &amp; Sort</h3>
+                <button class="btn-ghost" style="padding:6px 10px;min-height:36px;" onclick="document.getElementById('mobileFilterSheet').style.display='none'">✕</button>
             </div>
             <div style="margin-bottom:12px;">
-                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;">Sort By</label>
+                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="sortBy">Sort By</label>
                 <select id="sortSelectMobile" class="select-field" style="font-size:.82rem;">
-                    <option value="PRIORITY">Priority First</option>
-                    <option value="AGE_DESC">Oldest Signal</option>
-                    <option value="AGE_ASC">Newest Signal</option>
-                    <option value="STATUS_ASC">By Status</option>
-                    <option value="NAME_ASC">Name A–Z</option>
-                    <option value="NAME_DESC">Name Z–A</option>
+                    <option value="PRIORITY" data-i18n="priority">Priority First</option>
+                    <option value="AGE_DESC" data-i18n="oldestSignal">Oldest Signal</option>
+                    <option value="AGE_ASC" data-i18n="newestSignal">Newest Signal</option>
+                    <option value="STATUS_ASC" data-i18n="statusAsc">By Status</option>
+                    <option value="NAME_ASC" data-i18n="nameAsc">Name A–Z</option>
+                    <option value="NAME_DESC" data-i18n="nameDesc">Name Z–A</option>
                 </select>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;">Signal Age</label>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="signalAge">Signal Age</label>
                 <select id="ageFilterMobile" class="select-field" style="font-size:.82rem;">
-                    <option value="ALL">All Signal Ages</option>
-                    <option value="1H">Last 1 hour</option>
-                    <option value="6H">Last 6 hours</option>
-                    <option value="24H">Last 24 hours</option>
-                    <option value="STALE">Stale (&gt;24h)</option>
+                    <option value="ALL" data-i18n="all">All Signal Ages</option>
+                    <option value="1H" data-i18n="last1Hour">Last 1 hour</option>
+                    <option value="6H" data-i18n="last6Hours">Last 6 hours</option>
+                    <option value="24H" data-i18n="last24Hours">Last 24 hours</option>
+                    <option value="STALE" data-i18n="stale">Stale (&gt;24h)</option>
                 </select>
             </div>
-            <button class="btn-primary" style="width:100%;" onclick="applyMobileFilters()">Apply Filters</button>
+            <button class="btn-primary" style="width:100%;min-height:44px;" onclick="applyMobileFilters()" data-i18n="applyFilters">Apply Filters</button>
         </div>
     </div>
 
@@ -568,11 +591,11 @@
         <div class="nav-item active" id="navFleet" onclick="mobileNav('fleet')"><span>🚢</span><span>Fleet</span></div>
         <div class="nav-item" id="navMap" onclick="mobileNav('map')"><span>🗺</span><span>Map</span></div>
         <div class="nav-item" id="navAdd" onclick="mobileNav('add')"><span>＋</span><span>Add</span></div>
-        <div class="nav-item" id="navAlerts" onclick="toggleAlertPanel()">
+        <div class="nav-item" id="navAlerts" onclick="mobileNav('alerts')">
             <span style="position:relative;">🔔<span id="navBadge" class="badge hidden" style="top:-8px;right:-8px;font-size:.55rem;width:15px;height:15px;"></span></span>
             <span>Alerts</span>
         </div>
-        <div class="nav-item" id="navExport" onclick="exportCSV()"><span>⬇</span><span>Export</span></div>
+        <div class="nav-item" id="navExport" onclick="mobileNav('export')"><span>⬇</span><span>Export</span></div>
     </nav>
 
     <!-- SYSTEM INFO -->

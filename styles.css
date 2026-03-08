@@ -1,3 +1,21 @@
+/*
+ * ⚠️  WARNING — DO NOT LINK THIS FILE IN index.html ⚠️
+ * ─────────────────────────────────────────────────────────────────────────────
+ * This file is ORPHANED. The application uses an inline <style> block inside
+ * index.html which is the authoritative stylesheet.
+ *
+ * This file contains CONFLICTING rules that would BREAK the UI if linked:
+ *   • .btn-primary { color: #000 }  ← conflicts with inline color: #fff
+ *   • .main-container uses grid layout  ← conflicts with inline block layout
+ *   • .kpi-bar uses flex-wrap  ← conflicts with inline overflow-x scroll
+ *   • .status-bar, .kpi-bar padding values differ from inline definitions
+ *
+ * To make a change to the styles, edit the <style> block in index.html directly.
+ *
+ * This file is kept as a reference/legacy artifact only.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 :root {
     --bg-deep: #020c1a;
     --bg-base: #040e1e;
