@@ -295,45 +295,16 @@ body {
     font-family: var(--mono);
     font-size: 1.1rem;
     font-weight: 800;
-    color: #fff;
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: var(--accent);
-}
-
-.kpi-value.green {
-    color: #fff;
-    background: var(--success);
-}
-
-.kpi-value.blue {
-    color: #fff;
-    background: var(--accent);
-}
-
-.kpi-value.yellow {
-    color: #000;
-    background: var(--warning);
-}
-
-.kpi-value.red {
-    color: #fff;
-    background: var(--danger);
-}
-
-.kpi-value.orange {
-    color: #fff;
-    background: #f97316;
+    color: var(--accent);
 }
 
 /* MAIN LAYOUT */
 .main-container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    min-height: calc(100vh - 58px - 50px);
+    overflow: hidden;
 }
 
 .list-view {
@@ -951,19 +922,17 @@ textarea:focus {
 /* MAP LEGEND */
 .map-legend {
     position: absolute;
-    bottom: 20px;
-    right: 20px;
+    bottom: 16px;
+    right: 16px;
     background: var(--bg-card);
-    border: 2px solid var(--border);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 14px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 500;
+    z-index: 100;
     font-size: 0.75rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    pointer-events: all;
 }
 
 .legend-item {
@@ -1360,65 +1329,4 @@ textarea:focus {
         padding: 3px 6px;
         font-size: 0.62rem;
     }
-}
-
-/* PORT COMPATIBILITY */
-.compat-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.compat-port {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    background: var(--bg-input);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    border-left: 3px solid var(--text-soft);
-}
-
-.compat-port-name {
-    font-weight: 600;
-    color: #fff;
-    font-size: 0.8rem;
-}
-
-.compat-port-depth {
-    font-size: 0.65rem;
-    color: var(--text-soft);
-    margin-top: 2px;
-}
-
-.compat-ok {
-    color: #10b981;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.compat-marginal {
-    color: #f59e0b;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.compat-anchor-only {
-    color: #3b82f6;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.compat-incompatible {
-    color: #ef4444;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-.compat-unknown {
-    color: var(--text-soft);
-    font-weight: bold;
-    font-size: 1.2rem;
 }
