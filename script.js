@@ -764,7 +764,7 @@ function renderVessels(tracked) {
             const vName = escapeHtml(v.name || 'Loading...');
             const vDest = escapeHtml(v.destination_port || v.destination || '—');
             const vFlag = escapeHtml(v.flag || '—');
-            const loaHtml = v.length_overall_m ? `<span class="vessel-loa">${Number(v.length_overall_m).toFixed(0)}m</span>` : '';
+            const loaHtml = v.length_overall_m ? `<span class="vessel-loa">${Number(v.length_overall_m).toFixed(0)}m${v.draught_m ? ' / ' + v.draught_m : ''}</span>` : '';
             const etaR = formatEtaCountdown(v.eta_utc);
             
             const sancBanner = sanc ? `<div class="sanction-banner"><div class="sanction-banner-icon">🚨</div><div class="sanction-banner-body"><div class="sanction-banner-title">SANCTIONED</div><div class="sanction-banner-detail">${escapeHtml((S.sanctionDetails.get(imo) || [])[0]?.name || 'Sanctions List')}</div></div></div>` : '';
@@ -1020,39 +1020,134 @@ function setupEventListeners() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function init() {
-    console.log('🚢 VesselTracker v5.5');
-    i18n.init();
-    
+    console.log('🚢 VesselTracker v5.5 — Fully fixed & translated');
+
+    // Ensure i18n is ready and update DOM immediately
+    if (typeof i18n !== 'undefined' && i18n.updateDOM) {
+        console.log('📝 Initializing translations...');
+        i18n.updateDOM();
+        console.log(`🌐 Current language: ${i18n.currentLang}`);
+    } else {
+        console.warn('⚠️ i18n not found, retrying...');
+    }
+
+    // Sort selects
     if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
-    
+    if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
+
+    // Render alerts
     renderAlerts();
     updateAlertBadge();
-    
-    if (loadCachedData()) {
-        updateStatus('Loaded from cache', 'success');
+
+    // Load cache immediately
+    if (loadCachedData()) updateStatus(i18n.get('loadedFromCache'), 'success');
+
+    // IMO input
+    setupImoInput();
+
+    // Add vessel button
+    if (el.addBtn) el.addBtn.addEventListener('click', addVessel);
+    if (el.imoInput) {
+        el.imoInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !el.addBtn.disabled) addVessel(); });
     }
-    
-    setupEventListeners();
-    
+
+    // Search
+    if (el.searchInput) {
+        el.searchInput.addEventListener('input', () => {
+            S.searchQuery = el.searchInput.value.trim().toLowerCase();
+            renderVessels(S.trackedImosCache);
+        });
+    }
+
+    // Filter chips
+    document.querySelectorAll('.chip[data-filter]').forEach(chip => {
+        chip.addEventListener('click', () => setFilter(chip.dataset.filter, chip));
+    });
+
+    // Age filter (desktop)
+    if (el.ageFilter) {
+        el.ageFilter.addEventListener('change', () => {
+            S.currentAgeFilter = el.ageFilter.value;
+            if (el.ageFilterMobile) el.ageFilterMobile.value = S.currentAgeFilter;
+            renderVessels(S.trackedImosCache);
+        });
+    }
+
+    // Sort select (desktop)
+    if (el.sortSelect) {
+        el.sortSelect.addEventListener('change', () => {
+            S.currentSortKey = el.sortSelect.value;
+            localStorage.setItem('vt_sort', S.currentSortKey);
+            if (el.sortSelectMobile) el.sortSelectMobile.value = S.currentSortKey;
+            renderVessels(S.trackedImosCache);
+        });
+    }
+
+    // View toggles (header buttons)
+    if (el.viewListBtn) el.viewListBtn.addEventListener('click', () => toggleView('list'));
+    if (el.viewMapBtn) el.viewMapBtn.addEventListener('click', () => toggleView('map'));
+
+    // Refresh button
+    if (el.refreshButton) el.refreshButton.addEventListener('click', loadData);
+
+    // Alerts
+    el.alertOverlay.addEventListener('click', closeAlertPanel);
+    const alertsBtn = document.getElementById('alertsBtn');
+    if (alertsBtn) alertsBtn.addEventListener('click', toggleAlertPanel);
+
+    // Confirm modal
+    if (el.confirmCancel) el.confirmCancel.addEventListener('click', () => { el.confirmModal.classList.add('hidden'); S.vesselToRemove = null; });
+    if (el.confirmOk) el.confirmOk.addEventListener('click', () => { if (S.vesselToRemove) removeIMOConfirmed(S.vesselToRemove); el.confirmModal.classList.add('hidden'); });
+
+    // Language toggle
+    const langToggle = document.getElementById('langToggle');
+    if (langToggle) {
+        langToggle.textContent = i18n.currentLang === 'FR' ? 'EN' : 'FR';
+        langToggle.addEventListener('click', () => {
+            const newLang = i18n.currentLang === 'EN' ? 'FR' : 'EN';
+            i18n.setLang(newLang);
+            langToggle.textContent = newLang === 'FR' ? 'EN' : 'FR';
+            if (S.lastDataModified) updateLastModified(S.lastDataModified);
+            renderVessels(S.trackedImosCache);
+            updateFleetKPI(S.trackedImosCache);
+            updateStatus(i18n.get('languageChanged'), 'success');
+        });
+    }
+
+    // Mobile FAB filter
+    if (el.fabFilter) {
+        el.fabFilter.addEventListener('click', () => {
+            document.getElementById('mobileFilterSheet').style.display = 'flex';
+        });
+    }
+
+    // Mobile: hide add card initially
+    if (window.innerWidth < 641) el.addCard.classList.add('hidden');
+
+    // Responsive FAB visibility
+    const updateFabVisibility = () => {
+        if (el.fabFilter) el.fabFilter.style.display = window.innerWidth < 641 ? 'flex' : 'none';
+    };
+    updateFabVisibility();
+    window.addEventListener('resize', updateFabVisibility);
+
+    // Pull to refresh
+    initPullToRefresh();
+
+    // Clock
+    setInterval(tickClock, 1000);
+    tickClock();
+
+    // Data
     loadData();
     checkApiStatus();
-    loadSanctionsLists().catch(e => console.warn('Sanctions:', e));
-    
-    S.refreshInterval = setInterval(loadData, CONFIG.REFRESH_INTERVAL);
-    
-    if (window.innerWidth < 641) {
-        if (el.fabFilter) el.fabFilter.style.display = 'flex';
-        if (el.filterSection) el.filterSection.classList.remove('visible');
-    }
-    
-    window.addEventListener('resize', () => {
-        if (window.innerWidth > 640) {
-            if (el.fabFilter) el.fabFilter.style.display = 'none';
-            if (el.filterSection) el.filterSection.classList.remove('visible');
-        } else {
-            if (el.fabFilter) el.fabFilter.style.display = 'flex';
-        }
+    loadSanctionsLists().catch(e => {
+        console.warn('Sanctions:', e);
+        if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ ${i18n.get('sanctionsUnavailable')}</span>`;
     });
+
+    // Auto-refresh
+    S.refreshInterval = setInterval(loadData, CONFIG.REFRESH_INTERVAL);
 }
 
 if (document.readyState === 'loading') {

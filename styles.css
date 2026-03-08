@@ -295,16 +295,45 @@ body {
     font-family: var(--mono);
     font-size: 1.1rem;
     font-weight: 800;
-    color: var(--accent);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--accent);
+}
+
+.kpi-value.green {
+    color: #fff;
+    background: var(--success);
+}
+
+.kpi-value.blue {
+    color: #fff;
+    background: var(--accent);
+}
+
+.kpi-value.yellow {
+    color: #000;
+    background: var(--warning);
+}
+
+.kpi-value.red {
+    color: #fff;
+    background: var(--danger);
+}
+
+.kpi-value.orange {
+    color: #fff;
+    background: #f97316;
 }
 
 /* MAIN LAYOUT */
 .main-container {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
-    min-height: calc(100vh - 58px - 50px);
-    overflow: hidden;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .list-view {
@@ -922,17 +951,19 @@ textarea:focus {
 /* MAP LEGEND */
 .map-legend {
     position: absolute;
-    bottom: 16px;
-    right: 16px;
+    bottom: 20px;
+    right: 20px;
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 12px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 100;
+    z-index: 500;
     font-size: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    pointer-events: all;
 }
 
 .legend-item {
