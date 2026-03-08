@@ -1289,7 +1289,7 @@ if (document.readyState === 'loading') {
 
 // PWA Service Worker
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register(
-        'data:application/javascript,self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("fetch",e=>e.respondWith(fetch(e.request).catch(()=>new Response("Offline"))))'
-    ).catch(() => { });
+    navigator.serviceWorker.register('sw.js').catch(err => {
+        console.warn('Service Worker registration failed:', err);
+    });
 }
