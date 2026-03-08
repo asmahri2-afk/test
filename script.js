@@ -840,7 +840,12 @@ async function updateTrackedImos(imo, isAdd) {
             await ghPut(CONFIG.TRACKED_PATH, list, null, `${isAdd ? 'Add' : 'Remove'} IMO ${imo}`);
             updateStatus(`${isAdd ? 'Added' : 'Removed'} IMO ${imo}`, 'success');
             if (isAdd) { el.imoInput.value = ''; el.namePreview.innerHTML = ''; el.addBtn.disabled = true; }
-            await loadData();
+
+            // 🔓 Release busy flag so loadData() can run
+            S.isApiBusy = false;
+            if (el.refreshButton) el.refreshButton.disabled = false;
+
+            await loadData();   // ✅ Now the list will refresh immediately
             break;
         } catch (err) {
             if (attempt < 2) { updateStatus('Retrying...', 'warning'); await new Promise(r => setTimeout(r, 1000)); }
