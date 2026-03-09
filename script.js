@@ -1381,15 +1381,15 @@ function applyMobileFilters() {
         localStorage.setItem('vt_sort', sortValue);
     }
     
-    // Update age filter
-    if (ageValue) {
-        S.ageFilter = ageValue;
-        localStorage.setItem('vt_ageFilter', ageValue);
+    // Update age filter - use the same logic as the chip filters
+    const ageSelect = document.getElementById('ageFilter');
+    if (ageSelect) {
+        ageSelect.value = ageValue;
     }
     
-    // Re-render vessels
-    renderVessels();
+    // Close menu and re-render using the chip filter logic
     closeFilterMenu();
+    renderVessels(S.trackedImosCache);
 }
 
 if (document.readyState === 'loading') {
