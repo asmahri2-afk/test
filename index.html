@@ -459,7 +459,7 @@
     <button id="filterBtn" class="filter-button mobile-only" onclick="toggleFilterMenu()">⚙ FILTER</button>
     
     <!-- FILTER MENU (Mobile) -->
-    <div id="filterMenu" class="filter-menu mobile-only" style="display:none;" onclick="closeFilterMenu(event)">
+    <div id="filterMenu" class="filter-menu mobile-only" onclick="closeFilterMenu(event)">
         <div class="filter-menu-content" onclick="event.stopPropagation()">
             <div class="filter-menu-header">
                 <h3 data-i18n="filtersSort">Filters & Sort</h3>
@@ -609,6 +609,7 @@
         <div class="nav-item" id="navExport" onclick="mobileNav('export')"><span>�ort"><span>📤</span><span>Export</span></div>
     </nav>
 
+    <script src="translations.js"></script>
     <script src="script.js"></script>
 </body>
 </html

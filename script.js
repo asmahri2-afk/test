@@ -1222,68 +1222,11 @@ function init() {
     console.log('🚢 VesselTracker v5.5 — Final');
 
     try {
-        // i18n: Full translation system with EN/FR support
-        if (typeof i18n === 'undefined') {
-            const translations = {
-                EN: {
-                    confirm: 'Confirm', cancel: 'Cancel', remove: 'Remove', warnings: 'Alerts',
-                    tracked: 'Fleet', underway: 'Underway', port: 'At Port', atPort: 'Port',
-                    atAnchor: 'Anchor', stalled: 'Stalled', status: 'Sanctioned',
-                    addVessel: 'Add Vessel', track: 'Add', imoHint: 'Enter a valid 7-digit IMO number to track the vessel',
-                    trackedFleet: 'Tracked Fleet', all: 'All', priority: 'Priority', lastUpdate: 'Last Update',
-                    oldestSignal: 'Oldest Signal', newestSignal: 'Newest Signal',
-                    statusAsc: 'By Status', nameAsc: 'Name A–Z', nameDesc: 'Name Z–A',
-                    last1Hour: 'Last 1 hour', last6Hours: 'Last 6 hours', last24Hours: 'Last 24 hours',
-                    stale: 'Stale (>24h)', sortBy: 'Sort By', signalAge: 'Signal Age',
-                    applyFilters: 'Apply Filters', filtersSort: 'Filters & Sort'
-                },
-                FR: {
-                    confirm: 'Confirmer', cancel: 'Annuler', remove: 'Supprimer', warnings: 'Alertes',
-                    tracked: 'Flotte', underway: 'En navigation', port: 'Au port', atPort: 'Port',
-                    atAnchor: 'Au mouillage', stalled: 'Arrêté', status: 'Sanctionné',
-                    addVessel: 'Ajouter navire', track: 'Ajouter', imoHint: 'Entrez un numéro IMO valide à 7 chiffres',
-                    trackedFleet: 'Flotte suivi', all: 'Tous', priority: 'Priorité', lastUpdate: 'Dernière mise à jour',
-                    oldestSignal: 'Signal le plus ancien', newestSignal: 'Signal le plus récent',
-                    statusAsc: 'Par statut', nameAsc: 'Nom A–Z', nameDesc: 'Nom Z–A',
-                    last1Hour: 'Dernière 1 heure', last6Hours: 'Dernières 6 heures', last24Hours: 'Dernières 24 heures',
-                    stale: 'Ancien (>24h)', sortBy: 'Trier par', signalAge: 'Ancienneté du signal',
-                    applyFilters: 'Appliquer les filtres', filtersSort: 'Filtres et tri'
-                }
-            };
-            
-            window.i18n = {
-                currentLang: localStorage.getItem('lang') || 'EN',
-                dict: translations,
-                get(key) { return this.dict[this.currentLang]?.[key] || key; },
-                setLang(l) { 
-                    this.currentLang = l; 
-                    localStorage.setItem('lang', l);
-                    this.updateDOM();
-                },
-                updateDOM() {
-                    document.querySelectorAll('[data-i18n]').forEach(el => {
-                        const key = el.getAttribute('data-i18n');
-                        const text = this.get(key);
-                        if (el.children.length === 0) {
-                            el.textContent = text;
-                        } else {
-                            el.childNodes.forEach(node => {
-                                if (node.nodeType === 3) node.remove();
-                            });
-                            el.prepend(document.createTextNode(text));
-                        }
-                    });
-                    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-                        const key = el.getAttribute('data-i18n-placeholder');
-                        el.placeholder = this.get(key);
-                    });
-                },
-                init() { this.updateDOM(); }
-            };
+        // i18n is provided by translations.js (loaded before this script)
+        // Just initialize translations on page load
+        if (i18n && i18n.init) {
+            i18n.init();
         }
-
-        // Apply translations on page load
-        i18n.init();
 
         // Sort selects
         if (el.sortSelect) el.sortSelect.value = S.currentSortKey;
