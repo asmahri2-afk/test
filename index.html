@@ -462,32 +462,32 @@
     <div id="filterMenu" class="filter-menu mobile-only" style="display:none;" onclick="closeFilterMenu(event)">
         <div class="filter-menu-content" onclick="event.stopPropagation()">
             <div class="filter-menu-header">
-                <h3>Filters & Sort</h3>
+                <h3 data-i18n="filtersSort">Filters & Sort</h3>
                 <button class="btn-ghost" style="padding:6px 10px;min-height:36px;" onclick="closeFilterMenu()">✕</button>
             </div>
             <div class="filter-menu-body">
                 <div style="margin-bottom:12px;">
-                    <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;">Sort By</label>
+                    <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="sortBy">Sort By</label>
                     <select id="sortSelectMobile" class="select-field" style="font-size:.82rem;">
-                        <option value="PRIORITY">Priority First</option>
-                        <option value="AGE_DESC">Oldest Signal</option>
-                        <option value="AGE_ASC">Newest Signal</option>
-                        <option value="STATUS_ASC">By Status</option>
-                        <option value="NAME_ASC">Name A–Z</option>
-                        <option value="NAME_DESC">Name Z–A</option>
+                        <option value="PRIORITY" data-i18n="priority">Priority First</option>
+                        <option value="AGE_DESC" data-i18n="oldestSignal">Oldest Signal</option>
+                        <option value="AGE_ASC" data-i18n="newestSignal">Newest Signal</option>
+                        <option value="STATUS_ASC" data-i18n="statusAsc">By Status</option>
+                        <option value="NAME_ASC" data-i18n="nameAsc">Name A–Z</option>
+                        <option value="NAME_DESC" data-i18n="nameDesc">Name Z–A</option>
                     </select>
                 </div>
                 <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;">Signal Age</label>
+                    <label style="display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);margin-bottom:5px;" data-i18n="signalAge">Signal Age</label>
                     <select id="ageFilterMobile" class="select-field" style="font-size:.82rem;">
-                        <option value="ALL">All Signal Ages</option>
-                        <option value="1H">Last 1 hour</option>
-                        <option value="6H">Last 6 hours</option>
-                        <option value="24H">Last 24 hours</option>
-                        <option value="STALE">Stale (>24h)</option>
+                        <option value="ALL" data-i18n="all">All Signal Ages</option>
+                        <option value="1H" data-i18n="last1Hour">Last 1 hour</option>
+                        <option value="6H" data-i18n="last6Hours">Last 6 hours</option>
+                        <option value="24H" data-i18n="last24Hours">Last 24 hours</option>
+                        <option value="STALE" data-i18n="stale">Stale (>24h)</option>
                     </select>
                 </div>
-                <button class="btn-primary" style="width:100%;min-height:44px;" onclick="applyMobileFilters()">Apply Filters</button>
+                <button class="btn-primary" style="width:100%;min-height:44px;" onclick="applyMobileFilters()" data-i18n="applyFilters">Apply Filters</button>
             </div>
         </div>
     </div>
