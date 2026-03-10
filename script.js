@@ -87,6 +87,7 @@ const el = {
     apiStatusCard: document.getElementById('apiStatusCard'),
     sanctionsStatus: document.getElementById('sanctionsStatus'),
     refreshButton: document.getElementById('refreshButton'),
+    exportButton: document.getElementById('exportBtn'),
     statusMsg: document.getElementById('statusMsg'),
     loadingOverlay: document.getElementById('loadingOverlay'),
     loadingText: document.getElementById('loadingText'),
@@ -1390,6 +1391,9 @@ function init() {
 
         // Refresh button
         if (el.refreshButton) el.refreshButton.addEventListener('click', loadData);
+
+        // Export button
+        if (el.exportButton) el.exportButton.addEventListener('click', exportCSV);
 
         // Alerts — guarded: a null here must NOT kill the rest of init()
         if (el.alertOverlay) el.alertOverlay.addEventListener('click', closeAlertPanel);
