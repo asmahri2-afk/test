@@ -224,6 +224,11 @@ function getFlagCode(f) {
 
 function isPriority(imo) { return S.priorities.includes(imo); }
 
+function getStatusLabel(status) {
+    const map = { 'UNDERWAY': 'statusUnderway', 'AT PORT': 'statusAtPort', 'AT ANCHOR': 'statusAtAnchor', 'STALLED': 'statusStalled', 'DATA PENDING': 'statusPending' };
+    return i18n.get(map[status] || 'statusPending');
+}
+
 function validateIMO(imo) {
     if (!/^\d{7}$/.test(imo)) return false;
     const digits = imo.split('').map(Number);
@@ -989,14 +994,14 @@ function renderVessels(tracked) {
 
             const compatHtml = compat ? `
                 <div class="section-divider"></div>
-                <div class="section-mini-title">Port Compatibility · Draught ${compat[0].draught}m</div>
+                <div class="section-mini-title">${i18n.get('portCompatTitle')} · ${i18n.get('vesselDraught')} ${compat[0].draught}m</div>
                 <div class="compat-grid">
-                    ${compat.map(p => `<div class="compat-port">${CI[p.status] || CI.unknown}<div><div class="compat-port-name">${escapeHtml(p.name)}</div><div class="compat-port-depth">${p.pierDepth != null ? 'Pier ' + p.pierDepth + 'm / Anch ' + p.anchorDepth + 'm' : 'No depth data'}</div></div></div>`).join('')}
+                    ${compat.map(p => `<div class="compat-port">${CI[p.status] || CI.unknown}<div><div class="compat-port-name">${escapeHtml(p.name)}</div><div class="compat-port-depth">${p.pierDepth != null ? 'Pier ' + p.pierDepth + 'm / Anch ' + p.anchorDepth + 'm' : i18n.get('noDepthData')}</div></div></div>`).join('')}
                 </div>` : '';
 
             const notesHtml = `
                 <div class="section-divider"></div>
-                <div class="section-mini-title">📋 Notes <span id="notes-saved-${imo}" class="notes-saved">✓ Saved</span></div>
+                <div class="section-mini-title">📋 ${i18n.get('notesLabel')} <span id="notes-saved-${imo}" class="notes-saved">✓ Saved</span></div>
                 <textarea id="notes-${imo}" oninput="onNoteInput('${imo}',this)" placeholder="Agent contact, cargo, special instructions...">${escapeHtml(getNotes(imo))}</textarea>`;
 
             const card = document.createElement('div');
@@ -1016,15 +1021,15 @@ function renderVessels(tracked) {
                                 </div>
                                 <div class="vessel-imo">IMO ${imo}</div>
                             </div>
-                            <span class="tag ${tc}">${status}</span>
+                            <span class="tag ${tc}">${getStatusLabel(status)}</span>
                         </div>
                         ${isPending
-                    ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>Waiting for data...</div>`
+                    ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--text-soft);font-size:.76rem;"><div class="spinner" style="width:14px;height:14px;margin:0;"></div>${i18n.get('waitData')}</div>`
                     : `<div class="vessel-meta">
-                            <div class="meta-row"><span class="meta-label">Signal</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div>
-                            <div class="meta-row"><span class="meta-label">Dest.</span><span class="meta-val">${escapeHtml(v.destination || '—')}</span></div>
-                            <div class="meta-row"><span class="meta-label">Position</span><span class="meta-val"><span class="tag position">${v.lat != null ? Number(v.lat).toFixed(3) : '—'}, ${v.lon != null ? Number(v.lon).toFixed(3) : '—'}</span></span></div>
-                            <div class="meta-row"><span class="meta-label">ETA</span><span class="meta-val">${etaR ? `<span class="eta-countdown ${etaR.cls}" data-eta="${escapeHtml(v.eta_utc || '')}">${etaR.text}</span>` : (formatLocalTime(v.eta_utc) || '—')}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('signalLabel')}</span><span class="meta-val ${ageData.ageClass}">${ageData.ageText}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('destLabel')}</span><span class="meta-val">${escapeHtml(v.destination || '—')}</span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('posLabel')}</span><span class="meta-val"><span class="tag position">${v.lat != null ? Number(v.lat).toFixed(3) : '—'}, ${v.lon != null ? Number(v.lon).toFixed(3) : '—'}</span></span></div>
+                            <div class="meta-row"><span class="meta-label">${i18n.get('etaLabel')}</span><span class="meta-val">${etaR ? `<span class="eta-countdown ${etaR.cls}" data-eta="${escapeHtml(v.eta_utc || '')}">${etaR.text}</span>` : (formatLocalTime(v.eta_utc) || '—')}</span></div>
                         </div>
                         <div class="tag-row">
                             ${v.sog != null ? `<span class="tag speed">⚡ ${Number(v.sog).toFixed(1)} kn</span>` : ''}
@@ -1034,23 +1039,23 @@ function renderVessels(tracked) {
                             ${v.destination_distance_nm ? `<span class="tag distance">🎯 ${Number(v.destination_distance_nm).toFixed(0)} nm</span>` : ''}
                             <div id="weather-${imo}" style="display:contents;"></div>
                         </div>
-                        <div class="hint-text">Tap to expand · ${escapeHtml(v.flag || '—')}</div>`
+                        <div class="hint-text">${i18n.get('tapExpand')} · ${escapeHtml(v.flag || '—')}</div>`
                 }
                     </div>
                 </div>
                 <div id="details-${imo}" class="vessel-expanded">
-                    <div class="section-mini-title">📋 Vessel Details</div>
+                    <div class="section-mini-title">📋 ${i18n.get('vesselDetails')}</div>
                     <div class="expanded-grid">
-                        <div class="exp-item"><div class="exp-label">Ship Type</div><div class="exp-val">${escapeHtml(v.ship_type || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">DWT</div><div class="exp-val">${v.deadweight_t ? formatNumber(Number(v.deadweight_t) / 1000) + 'k t' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Gross Tonnage</div><div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() + ' t' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Built</div><div class="exp-val">${escapeHtml(v.year_of_build || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">Length</div><div class="exp-val">${v.length_overall_m ? Number(v.length_overall_m).toFixed(1) + ' m' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Beam</div><div class="exp-val">${v.beam_m ? Number(v.beam_m).toFixed(1) + ' m' : '—'}</div></div>
-                        <div class="exp-item"><div class="exp-label">Draught</div><div class="exp-val">${escapeHtml(v.draught_m || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">MMSI</div><div class="exp-val">${escapeHtml(v.mmsi || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">AIS Source</div><div class="exp-val">${escapeHtml(v.ais_source || '—')}</div></div>
-                        <div class="exp-item"><div class="exp-label">Flag</div><div class="exp-val">${escapeHtml(v.flag || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('shipType')}</div><div class="exp-val">${escapeHtml(v.ship_type || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('dwt')}</div><div class="exp-val">${v.deadweight_t ? formatNumber(Number(v.deadweight_t) / 1000) + 'k t' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('grossTonnage')}</div><div class="exp-val">${v.gross_tonnage ? Number(v.gross_tonnage).toLocaleString() + ' t' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('builtYear')}</div><div class="exp-val">${escapeHtml(v.year_of_build || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('vesselLength')}</div><div class="exp-val">${v.length_overall_m ? Number(v.length_overall_m).toFixed(1) + ' m' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('vesselBeam')}</div><div class="exp-val">${v.beam_m ? Number(v.beam_m).toFixed(1) + ' m' : '—'}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('vesselDraught')}</div><div class="exp-val">${escapeHtml(v.draught_m || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('mmsiLabel')}</div><div class="exp-val">${escapeHtml(v.mmsi || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('aisSourceLabel')}</div><div class="exp-val">${escapeHtml(v.ais_source || '—')}</div></div>
+                        <div class="exp-item"><div class="exp-label">${i18n.get('flagLabel')}</div><div class="exp-val">${escapeHtml(v.flag || '—')}</div></div>
                     </div>
                     ${compatHtml}
                     ${notesHtml}
@@ -1058,8 +1063,8 @@ function renderVessels(tracked) {
                 <div class="vessel-footer">
                     <span class="vessel-footer-meta">AIS: ${escapeHtml(v.ais_source || '—')} · ${ageData.ageText}</span>
                     <div class="vessel-footer-actions">
-                        <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? '🚩 Priority' : '⑁ Flag'}</button>
-                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">Remove</button>
+                        <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? i18n.get('priorityBtn') : i18n.get('flagBtn')}</button>
+                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">${i18n.get('remove')}</button>
                     </div>
                 </div>
             `;

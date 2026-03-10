@@ -380,8 +380,8 @@
         <div class="alert-header">
             <h2>🔔 <span data-i18n="warnings">Alerts</span></h2>
             <div style="display:flex;gap:6px;">
-                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="markAllAlertsRead()">Read All</button>
-                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="clearAlerts()">Clear</button>
+                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="markAllAlertsRead()" data-i18n="readAll">Read All</button>
+                <button class="btn-secondary" style="padding:4px 9px;font-size:.7rem;" onclick="clearAlerts()" data-i18n="clear">Clear</button>
                 <button class="btn-ghost" style="padding:4px 8px;" onclick="closeAlertPanel()">✕</button>
             </div>
         </div>
@@ -405,6 +405,11 @@
             </div>
         </div>
         <div class="header-right">
+            <div class="header-clock desktop-only" id="headerClock">--:--:-- UTC</div>
+            <button class="icon-btn desktop-only" id="refreshButton" title="Refresh data" style="font-size:1.1rem;min-width:36px;">↻</button>
+            <button class="icon-btn desktop-only" id="alertsBtn" title="Alerts" style="position:relative;">
+                🔔<span id="alertBadge" class="badge hidden"></span>
+            </button>
             <button class="icon-btn" id="langToggle" title="Toggle Language">FR</button>
         </div>
     </div>
