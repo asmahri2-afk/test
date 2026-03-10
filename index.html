@@ -420,7 +420,8 @@
         <span id="statusMsg" class="status-msg">Ready</span>
         <div style="display:flex;align-items:center;gap:8px;">
             <span id="apiStatus" class="health-pill">API: Checking...</span>
-            <span id="sanctionsStatusInline" style="font-size:.65rem;color:var(--text-soft);font-family:var(--mono);"></span>
+            <span id="sanctionsStatus" style="font-size:.65rem;color:var(--text-soft);font-family:var(--mono);"></span>
+            <span id="sanctionsStatusInline" style="font-size:.65rem;color:var(--text-soft);font-family:var(--mono);display:none;"></span>
         </div>
     </div>
 
@@ -462,10 +463,10 @@
     </div>
 
     <!-- FILTER BUTTON (Mobile) -->
-    <button id="filterBtn" class="filter-button mobile-only" onclick="toggleFilterMenu()">⚙ FILTER</button>
+    <button id="fabFilter" class="filter-button mobile-only" onclick="toggleFilterMenu()">⚙ FILTER</button>
     
     <!-- FILTER MENU (Mobile) -->
-    <div id="filterMenu" class="filter-menu mobile-only" onclick="closeFilterMenu(event)">
+    <div id="mobileFilterSheet" class="filter-menu mobile-only" onclick="closeFilterMenu(event)">
         <div class="filter-menu-content" onclick="event.stopPropagation()">
             <div class="filter-menu-header">
                 <h3 data-i18n="filtersSort">Filters & Sort</h3>
@@ -614,6 +615,9 @@
         </div>
         <div class="nav-item" id="navExport" onclick="mobileNav('export')"><span>📤</span><span data-i18n="navExport">Export</span></div>
     </nav>
+
+    <!-- PULL TO REFRESH INDICATOR -->
+    <div id="ptrIndicator" class="ptr-indicator"></div>
 
     <script src="translations.js"></script>
     <script src="script.js"></script>

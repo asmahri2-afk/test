@@ -909,7 +909,7 @@ async function addVessel() {
         (async () => {
             try {
                 let vd = null;
-                for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`, `${CONFIG.RENDER_API}/vessel/${imo}`]) {
+                for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`]) {
                     try { const r = await fetchWithTimeout(ep, {}, 5000); if (r.ok) { vd = await r.json(); break; } } catch { }
                 }
                 if (vd && vd.found !== false) await updateStaticCache(imo, vd);
@@ -1009,7 +1009,7 @@ function setupImoInput() {
             el.namePreview.innerHTML = warnHtml + `<span style="color:var(--text-soft);font-size:.78rem;">${i18n.get('lookingUp')}</span>`;
             try {
                 let data = null;
-                for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`, `${CONFIG.RENDER_API}/vessel/${imo}`]) {
+                for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`]) {
                     try { const r = await fetchWithTimeout(ep, {}, 5000); if (r.ok) { data = await r.json(); break; } } catch { }
                 }
                 if (!data || data.found === false) {
@@ -1466,14 +1466,14 @@ function init() {
 
 // ── FILTER MENU FUNCTIONS ────────────────────────────────────────────────────
 function toggleFilterMenu() {
-    const filterMenu = document.getElementById('filterMenu');
+    const filterMenu = document.getElementById('mobileFilterSheet');
     if (filterMenu) {
         filterMenu.classList.toggle('show');
     }
 }
 
 function closeFilterMenu(event) {
-    const filterMenu = document.getElementById('filterMenu');
+    const filterMenu = document.getElementById('mobileFilterSheet');
     if (filterMenu) {
         filterMenu.classList.remove('show');
     }
