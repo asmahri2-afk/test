@@ -738,7 +738,7 @@ async function loadData() {
         updateAlertBadge();
         updateSystemHealth(Date.now(), vl.length, vi.source);
         updateFleetKPI(tracked);
-        if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} vessel${tracked.length !== 1 ? 's' : ''} tracked`;
+        if (el.vesselCount) el.vesselCount.textContent = tracked.length === 1 ? i18n.get('vesselTrackedSingle') : i18n.get('vesselTracked').replace('{n}', tracked.length);
         if (el.dataStats) el.dataStats.textContent = `${vl.length} ${i18n.get('inDatabase')} · ${vi.source}`;
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
@@ -753,7 +753,7 @@ async function loadData() {
         // Try stale cache first (up to 24h old — better than nothing)
         const gotCache = loadCachedData(true);
         if (gotCache) {
-            updateStatus('Showing cached data — ' + err.message, 'warning');
+            updateStatus(i18n.get('cachedDataMsg') + ' — ' + err.message, 'warning');
         } else {
             updateStatus(`Load failed: ${err.message}`, 'error');
             if (el.vesselsContainer) el.vesselsContainer.innerHTML = `
@@ -1261,7 +1261,7 @@ function mobileNav(tab) {
             document.getElementById('navFleet')?.classList.add('active');
         };
         el.alertOverlay?.addEventListener('click', restoreFleet, { once: true });
-        document.querySelector('.alert-panel .btn-ghost')?.addEventListener('click', restoreFleet, { once: true });
+        document.querySelector('.alert-panel .btn-secondary')?.addEventListener('click', restoreFleet, { once: true });
     } else if (tab === 'export') {
         // Export is instant — highlight briefly then return to Fleet
         document.getElementById('navExport')?.classList.add('active');
@@ -1287,7 +1287,7 @@ function exportCSV() {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     Object.assign(document.createElement('a'), { href: url, download: `fleet_${new Date().toISOString().slice(0, 10)}.csv` }).click();
     URL.revokeObjectURL(url);
-    updateStatus('Fleet report exported', 'success');
+    updateStatus(i18n.get('exportSuccess'), 'success');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1306,13 +1306,13 @@ function tickClock() {
 function initPullToRefresh() {
     let startY = 0, pulling = false;
     document.addEventListener('touchstart', e => { if (window.scrollY === 0) { startY = e.touches[0].clientY; pulling = true; } }, { passive: true });
-    document.addEventListener('touchmove', e => { if (!pulling) return; if (e.touches[0].clientY - startY > 60 && el.ptrIndicator) { el.ptrIndicator.classList.add('show'); el.ptrIndicator.textContent = '↓ Release to refresh'; } }, { passive: true });
+    document.addEventListener('touchmove', e => { if (!pulling) return; if (e.touches[0].clientY - startY > 60 && el.ptrIndicator) { el.ptrIndicator.classList.add('show'); el.ptrIndicator.textContent = i18n.get('ptrRelease'); } }, { passive: true });
     document.addEventListener('touchend', e => {
         if (!pulling) return;
         pulling = false;
         const dy = e.changedTouches[0].clientY - startY;
         if (dy > 60 && el.ptrIndicator) {
-            el.ptrIndicator.textContent = '↻ Refreshing...';
+            el.ptrIndicator.textContent = i18n.get('ptrRefreshing');
             loadData().then(() => el.ptrIndicator.classList.remove('show'));
         } else if (el.ptrIndicator) el.ptrIndicator.classList.remove('show');
     });
@@ -1445,7 +1445,7 @@ function init() {
         // If any setup step above throws, log it clearly and continue to data loading.
         // A broken event listener must never prevent the fleet from loading.
         console.error('⚠️ VesselTracker init() error (non-fatal):', initErr);
-        updateStatus('UI init error — loading data anyway', 'warning');
+        updateStatus(i18n.get('uiInitError'), 'warning');
     }
 
     // Data loading is OUTSIDE the try/catch — it must always run.
@@ -1475,26 +1475,7 @@ function closeFilterMenu(event) {
     }
 }
 
-function applyMobileFilters() {
-    const sortValue = document.getElementById('sortSelectMobile')?.value || 'PRIORITY';
-    const ageValue = document.getElementById('ageFilterMobile')?.value || 'ALL';
-    
-    // Update sort
-    if (sortValue) {
-        S.currentSortKey = sortValue;
-        localStorage.setItem('vt_sort', sortValue);
-    }
-    
-    // Update age filter - use the same logic as the chip filters
-    const ageSelect = document.getElementById('ageFilter');
-    if (ageSelect) {
-        ageSelect.value = ageValue;
-    }
-    
-    // Close menu and re-render using the chip filter logic
-    closeFilterMenu();
-    renderVessels(S.trackedImosCache);
-}
+
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

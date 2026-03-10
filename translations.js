@@ -154,6 +154,14 @@ const _translations = {
         etaLabel2:      'ETA {h}h {m}m {s}s',
         etaOverdue:     '{h}h {m}m overdue',
         etaOverdueMin:  '{m}m overdue',
+        // additional UI strings
+        vesselTracked:  '{n} vessels tracked',
+        vesselTrackedSingle: '1 vessel tracked',
+        cachedDataMsg:  'Showing cached data',
+        exportSuccess:  'Fleet exported',
+        ptrRelease:     '↓ Release to refresh',
+        ptrRefreshing:  '↻ Refreshing...',
+        uiInitError:    'UI init — loading data',
     },
     FR: {
         tracked:        'Flotte',
@@ -305,6 +313,14 @@ const _translations = {
         etaLabel2:      'ETA {h}h {m}m {s}s',
         etaOverdue:     '{h}h {m}m de retard',
         etaOverdueMin:  '{m}m de retard',
+        // additional UI strings
+        vesselTracked:  '{n} navires suivis',
+        vesselTrackedSingle: '1 navire suivi',
+        cachedDataMsg:  'Données en cache',
+        exportSuccess:  'Flotte exportée',
+        ptrRelease:     '↓ Relâcher pour actualiser',
+        ptrRefreshing:  '↻ Actualisation...',
+        uiInitError:    'Erreur init — chargement',
     }
 };
 
