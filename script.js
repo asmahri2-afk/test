@@ -147,10 +147,10 @@ function formatSignalAge(s) {
         const ms = Date.now() - dt.getTime();
         const h = ms / 3600000;
         let a, c;
-        if (ms < 60000) { a = 'Just now'; c = 'age-recent'; }
-        else if (h < 1) { const min = Math.floor(ms / 60000); a = `${min}m ago`; c = min <= 30 ? 'age-recent' : 'age-moderate'; }
-        else if (h < 24) { a = `${h.toFixed(1)}h ago`; c = h <= 3 ? 'age-recent' : 'age-moderate'; }
-        else { a = `${Math.floor(h / 24)}d ago`; c = 'age-stale'; }
+        if (ms < 60000) { a = i18n.get('justNow'); c = 'age-recent'; }
+        else if (h < 1) { const min = Math.floor(ms / 60000); a = i18n.get('timeAgoMin').replace('{n}', min); c = min <= 30 ? 'age-recent' : 'age-moderate'; }
+        else if (h < 24) { a = i18n.get('timeAgoHour').replace('{n}', h.toFixed(1)); c = h <= 3 ? 'age-recent' : 'age-moderate'; }
+        else { a = i18n.get('timeAgoDay').replace('{n}', Math.floor(h / 24)); c = 'age-stale'; }
         if (ms > CONFIG.CRITICAL_THRESHOLD_MS) c = 'status-critical';
         return { ageText: a, ageClass: c, rawAgeMs: ms };
     } catch { return { ageText: 'Error', ageClass: 'age-stale', rawAgeMs: Infinity }; }
@@ -162,13 +162,13 @@ function formatLocalTime(s) {
         const d = parseAisTimestamp(s) || new Date(s);
         if (isNaN(d.getTime())) return 'Invalid';
         const diff = d.getTime() - Date.now(), abs = Math.abs(diff);
-        if (abs < 60000) return 'Arriving Now';
+        if (abs < 60000) return i18n.get('arrivingNow');
         if (diff > 0) {
-            if (diff < 3600000) return `in ${Math.floor(abs / 60000)}m`;
-            if (diff < 86400000) return `in ${Math.floor(abs / 3600000)}h`;
+            if (diff < 3600000) return i18n.get('timeInMin').replace('{n}', Math.floor(abs / 60000));
+            if (diff < 86400000) return i18n.get('timeInHour').replace('{n}', Math.floor(abs / 3600000));
         } else {
-            if (abs < 3600000) return `${Math.floor(abs / 60000)}m ago`;
-            if (abs < 86400000) return `${Math.floor(abs / 3600000)}h ago`;
+            if (abs < 3600000) return i18n.get('timeAgoMin').replace('{n}', Math.floor(abs / 60000));
+            if (abs < 86400000) return i18n.get('timeAgoHour').replace('{n}', Math.floor(abs / 3600000));
         }
         return d.toLocaleDateString(navigator.language, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch { return s; }
@@ -182,9 +182,9 @@ function formatEtaCountdown(utcString) {
         const diff = eta - Date.now(), abs = Math.abs(diff);
         const h = Math.floor(abs / 3600000), m = Math.floor((abs % 3600000) / 60000), s = Math.floor((abs % 60000) / 1000);
         const p = v => String(v).padStart(2, '0');
-        if (abs < 60000) return { text: 'Arriving Now', cls: 'arrived' };
+        if (abs < 60000) return { text: i18n.get('arrivingNow'), cls: 'arrived' };
         if (diff > 0) return { text: `ETA ${h > 0 ? h + 'h ' : ''}${p(m)}m ${p(s)}s`, cls: '' };
-        return { text: `${h > 0 ? h + 'h ' : ''}${p(m)}m overdue`, cls: 'overdue' };
+        return { text: h > 0 ? i18n.get('etaOverdue').replace('{h}', h).replace('{m}', p(m)) : i18n.get('etaOverdueMin').replace('{m}', p(m)), cls: 'overdue' };
     } catch { return null; }
 }
 
@@ -213,10 +213,109 @@ function getVesselStatus(v) {
 
 function getFlagCode(f) {
     if (!f || ['N/A', 'Unknown', '-', ''].includes(f)) return null;
-    const m = { 'PANAMA': 'PA', 'MOROCCO': 'MA', 'MALTA': 'MT', 'ANTIGUA & BARBUDA': 'AG', 'SINGAPORE': 'SG', 'MARSHALL ISLANDS': 'MH', 'HONG KONG': 'HK', 'UNITED STATES': 'US', 'FRANCE': 'FR', 'LIBERIA': 'LR', 'GREECE': 'GR', 'CYPRUS': 'CY', 'BAHAMAS': 'BS', 'NORWAY': 'NO', 'UNITED KINGDOM': 'GB', 'NETHERLANDS': 'NL', 'GERMANY': 'DE', 'ITALY': 'IT', 'SPAIN': 'ES', 'PORTUGAL': 'PT', 'BELGIUM': 'BE', 'DENMARK': 'DK', 'SWEDEN': 'SE', 'FINLAND': 'FI', 'RUSSIA': 'RU', 'CHINA': 'CN', 'JAPAN': 'JP', 'SOUTH KOREA': 'KR', 'TAIWAN': 'TW', 'INDIA': 'IN', 'BRAZIL': 'BR', 'ARGENTINA': 'AR', 'CHILE': 'CL', 'AUSTRALIA': 'AU', 'NEW ZEALAND': 'NZ', 'CANADA': 'CA', 'MEXICO': 'MX', 'SOUTH AFRICA': 'ZA', 'EGYPT': 'EG', 'SAUDI ARABIA': 'SA', 'UAE': 'AE', 'QATAR': 'QA', 'TURKEY': 'TR', 'UKRAINE': 'UA', 'POLAND': 'PL', 'PHILIPPINES': 'PH', 'INDONESIA': 'ID', 'MALAYSIA': 'MY', 'VIETNAM': 'VN', 'THAILAND': 'TH', 'BANGLADESH': 'BD', 'PAKISTAN': 'PK', 'IRAN': 'IR', 'IRAQ': 'IQ', 'COMOROS': 'KM', 'PALAU': 'PW', 'TUVALU': 'TV', 'BELIZE': 'BZ', 'CAMBODIA': 'KH' };
-    const u = f.toUpperCase();
+    const m = {
+        // ── Europe ────────────────────────────────────────────────────────────
+        'ALBANIA': 'AL', 'ANDORRA': 'AD', 'AUSTRIA': 'AT', 'BELARUS': 'BY',
+        'BELGIUM': 'BE', 'BOSNIA AND HERZEGOVINA': 'BA', 'BOSNIA & HERZEGOVINA': 'BA',
+        'BULGARIA': 'BG', 'CROATIA': 'HR', 'CYPRUS': 'CY', 'CZECHIA': 'CZ',
+        'CZECH REPUBLIC': 'CZ', 'DENMARK': 'DK', 'ESTONIA': 'EE', 'FAROE ISLANDS': 'FO',
+        'FINLAND': 'FI', 'FRANCE': 'FR', 'GERMANY': 'DE', 'GIBRALTAR': 'GI',
+        'GREECE': 'GR', 'GUERNSEY': 'GG', 'HUNGARY': 'HU', 'ICELAND': 'IS',
+        'IRELAND': 'IE', 'ISLE OF MAN': 'IM', 'ITALY': 'IT', 'JERSEY': 'JE',
+        'KOSOVO': 'XK', 'LATVIA': 'LV', 'LIECHTENSTEIN': 'LI', 'LITHUANIA': 'LT',
+        'LUXEMBOURG': 'LU', 'MALTA': 'MT', 'MOLDOVA': 'MD', 'MONACO': 'MC',
+        'MONTENEGRO': 'ME', 'NETHERLANDS': 'NL', 'NORTH MACEDONIA': 'MK',
+        'NORWAY': 'NO', 'POLAND': 'PL', 'PORTUGAL': 'PT', 'ROMANIA': 'RO',
+        'RUSSIA': 'RU', 'RUSSIAN FEDERATION': 'RU', 'SAN MARINO': 'SM',
+        'SERBIA': 'RS', 'SLOVAKIA': 'SK', 'SLOVENIA': 'SI', 'SPAIN': 'ES',
+        'SVALBARD': 'SJ', 'SWEDEN': 'SE', 'SWITZERLAND': 'CH', 'TURKEY': 'TR',
+        'UKRAINE': 'UA', 'UNITED KINGDOM': 'GB', 'UK': 'GB', 'VATICAN': 'VA',
+        'HOLY SEE': 'VA',
+        // ── Americas ──────────────────────────────────────────────────────────
+        'ANTIGUA & BARBUDA': 'AG', 'ANTIGUA AND BARBUDA': 'AG', 'ARGENTINA': 'AR',
+        'ARUBA': 'AW', 'BAHAMAS': 'BS', 'BARBADOS': 'BB', 'BELIZE': 'BZ',
+        'BERMUDA': 'BM', 'BOLIVIA': 'BO', 'BRAZIL': 'BR', 'CANADA': 'CA',
+        'CAYMAN ISLANDS': 'KY', 'CHILE': 'CL', 'COLOMBIA': 'CO', 'COSTA RICA': 'CR',
+        'CUBA': 'CU', 'CURACAO': 'CW', 'DOMINICA': 'DM', 'DOMINICAN REPUBLIC': 'DO',
+        'ECUADOR': 'EC', 'EL SALVADOR': 'SV', 'FALKLAND ISLANDS': 'FK',
+        'FRENCH GUIANA': 'GF', 'GRENADA': 'GD', 'GUADELOUPE': 'GP',
+        'GUATEMALA': 'GT', 'GUYANA': 'GY', 'HAITI': 'HT', 'HONDURAS': 'HN',
+        'JAMAICA': 'JM', 'MARTINIQUE': 'MQ', 'MEXICO': 'MX', 'MONTSERRAT': 'MS',
+        'NETHERLANDS ANTILLES': 'AN', 'NICARAGUA': 'NI', 'PANAMA': 'PA',
+        'PARAGUAY': 'PY', 'PERU': 'PE', 'PUERTO RICO': 'PR',
+        'SAINT KITTS AND NEVIS': 'KN', 'SAINT KITTS & NEVIS': 'KN',
+        'SAINT LUCIA': 'LC', 'SAINT VINCENT': 'VC',
+        'SAINT VINCENT AND THE GRENADINES': 'VC', 'SURINAME': 'SR',
+        'TRINIDAD AND TOBAGO': 'TT', 'TRINIDAD & TOBAGO': 'TT',
+        'TURKS AND CAICOS': 'TC', 'UNITED STATES': 'US', 'USA': 'US',
+        'URUGUAY': 'UY', 'US VIRGIN ISLANDS': 'VI', 'VENEZUELA': 'VE',
+        // ── Africa ────────────────────────────────────────────────────────────
+        'ALGERIA': 'DZ', 'ANGOLA': 'AO', 'BENIN': 'BJ', 'BOTSWANA': 'BW',
+        'BURKINA FASO': 'BF', 'BURUNDI': 'BI', 'CABO VERDE': 'CV',
+        'CAPE VERDE': 'CV', 'CAMEROON': 'CM', 'CENTRAL AFRICAN REPUBLIC': 'CF',
+        'CHAD': 'TD', 'COMOROS': 'KM', 'CONGO': 'CG',
+        'DEMOCRATIC REPUBLIC OF CONGO': 'CD', 'DR CONGO': 'CD', 'DRC': 'CD',
+        'DJIBOUTI': 'DJ', 'EGYPT': 'EG', 'EQUATORIAL GUINEA': 'GQ',
+        'ERITREA': 'ER', 'ESWATINI': 'SZ', 'SWAZILAND': 'SZ', 'ETHIOPIA': 'ET',
+        'GABON': 'GA', 'GAMBIA': 'GM', 'GHANA': 'GH', 'GUINEA': 'GN',
+        'GUINEA-BISSAU': 'GW', 'IVORY COAST': 'CI', 'CÔTE D\'IVOIRE': 'CI',
+        'COTE D\'IVOIRE': 'CI', 'KENYA': 'KE', 'LESOTHO': 'LS', 'LIBERIA': 'LR',
+        'LIBYA': 'LY', 'MADAGASCAR': 'MG', 'MALAWI': 'MW', 'MALI': 'ML',
+        'MAURITANIA': 'MR', 'MAURITIUS': 'MU', 'MAYOTTE': 'YT', 'MOROCCO': 'MA',
+        'MOZAMBIQUE': 'MZ', 'NAMIBIA': 'NA', 'NIGER': 'NE', 'NIGERIA': 'NG',
+        'REUNION': 'RE', 'RWANDA': 'RW', 'SAO TOME AND PRINCIPE': 'ST',
+        'SENEGAL': 'SN', 'SEYCHELLES': 'SC', 'SIERRA LEONE': 'SL', 'SOMALIA': 'SO',
+        'SOUTH AFRICA': 'ZA', 'SOUTH SUDAN': 'SS', 'SUDAN': 'SD',
+        'TANZANIA': 'TZ', 'TOGO': 'TG', 'TUNISIA': 'TN', 'UGANDA': 'UG',
+        'WESTERN SAHARA': 'EH', 'ZAMBIA': 'ZM', 'ZIMBABWE': 'ZW',
+        // ── Middle East ───────────────────────────────────────────────────────
+        'BAHRAIN': 'BH', 'IRAN': 'IR', 'IRAQ': 'IQ', 'ISRAEL': 'IL',
+        'JORDAN': 'JO', 'KUWAIT': 'KW', 'LEBANON': 'LB', 'OMAN': 'OM',
+        'PALESTINE': 'PS', 'QATAR': 'QA', 'SAUDI ARABIA': 'SA', 'SYRIA': 'SY',
+        'UAE': 'AE', 'UNITED ARAB EMIRATES': 'AE', 'YEMEN': 'YE',
+        // ── Asia-Pacific ──────────────────────────────────────────────────────
+        'AFGHANISTAN': 'AF', 'ARMENIA': 'AM', 'AZERBAIJAN': 'AZ',
+        'BANGLADESH': 'BD', 'BHUTAN': 'BT', 'BRUNEI': 'BN', 'CAMBODIA': 'KH',
+        'CHINA': 'CN', 'EAST TIMOR': 'TL', 'TIMOR-LESTE': 'TL', 'GEORGIA': 'GE',
+        'HONG KONG': 'HK', 'INDIA': 'IN', 'INDONESIA': 'ID', 'JAPAN': 'JP',
+        'KAZAKHSTAN': 'KZ', 'KYRGYZSTAN': 'KG', 'LAOS': 'LA', 'MACAO': 'MO',
+        'MACAU': 'MO', 'MALAYSIA': 'MY', 'MALDIVES': 'MV', 'MONGOLIA': 'MN',
+        'MYANMAR': 'MM', 'BURMA': 'MM', 'NEPAL': 'NP', 'NORTH KOREA': 'KP',
+        'PAKISTAN': 'PK', 'PHILIPPINES': 'PH', 'SINGAPORE': 'SG',
+        'SOUTH KOREA': 'KR', 'SRI LANKA': 'LK', 'TAIWAN': 'TW',
+        'TAJIKISTAN': 'TJ', 'THAILAND': 'TH', 'TURKMENISTAN': 'TM',
+        'UZBEKISTAN': 'UZ', 'VIETNAM': 'VN',
+        // ── Pacific ───────────────────────────────────────────────────────────
+        'AUSTRALIA': 'AU', 'COOK ISLANDS': 'CK', 'FIJI': 'FJ',
+        'FRENCH POLYNESIA': 'PF', 'GUAM': 'GU', 'KIRIBATI': 'KI',
+        'MARSHALL ISLANDS': 'MH', 'MICRONESIA': 'FM', 'NAURU': 'NR',
+        'NEW CALEDONIA': 'NC', 'NEW ZEALAND': 'NZ', 'NIUE': 'NU',
+        'NORTHERN MARIANA ISLANDS': 'MP', 'PALAU': 'PW',
+        'PAPUA NEW GUINEA': 'PG', 'SAMOA': 'WS', 'SOLOMON ISLANDS': 'SB',
+        'TONGA': 'TO', 'TUVALU': 'TV', 'VANUATU': 'VU',
+        'WALLIS AND FUTUNA': 'WF',
+        // ── Caribbean / Atlantic ──────────────────────────────────────────────
+        'ANGUILLA': 'AI', 'BRITISH VIRGIN ISLANDS': 'VG', 'SAINT HELENA': 'SH',
+        'SAINT PIERRE AND MIQUELON': 'PM', 'TRISTAN DA CUNHA': 'SH',
+        // ── Common AIS short-forms / alternates ───────────────────────────────
+        'KOREA': 'KR', 'KOREA, SOUTH': 'KR', 'KOREA, NORTH': 'KP',
+        'LAO': 'LA', 'VIET NAM': 'VN', 'SYRIAN ARAB REPUBLIC': 'SY',
+        'LIBYAN ARAB JAMAHIRIYA': 'LY', 'TANZANIAN': 'TZ',
+        'DEMOCRATIC PEOPLE\'S REPUBLIC OF KOREA': 'KP',
+        'REPUBLIC OF KOREA': 'KR', 'ISLAMIC REPUBLIC OF IRAN': 'IR',
+        'ISLAMIC REPUBLIC OF PAKISTAN': 'PK',
+    };
+    const u = f.toUpperCase().trim();
     if (m[u]) return m[u];
-    for (const [k, v] of Object.entries(m)) { if (u.includes(k) || k.includes(u)) return v; }
+    // Partial match — longer key wins to avoid false positives
+    let best = null, bestLen = 0;
+    for (const [k, v] of Object.entries(m)) {
+        if ((u.includes(k) || k.includes(u)) && k.length > bestLen) {
+            best = v; bestLen = k.length;
+        }
+    }
+    if (best) return best;
+    // Inline ISO-2 code in parentheses e.g. "Foo (SM)"
     const pm = f.match(/\(([A-Z]{2})\)/);
     if (pm) return pm[1];
     return null;
@@ -332,7 +431,7 @@ function pushAlert(type, imo, vessel, msg) {
 }
 
 function renderAlerts() {
-    if (!S.alerts.length) { el.alertList.innerHTML = '<div class="alert-empty">📡 Monitoring fleet activity...</div>'; return; }
+    if (!S.alerts.length) { el.alertList.innerHTML = `<div class="alert-empty">${i18n.get('alertMonitoring')}</div>`; return; }
     el.alertList.innerHTML = S.alerts.map(a => `
         <div class="alert-item ${a.read ? '' : 'unread'} type-${a.type}">
             <div><span style="margin-right:4px;">${a.icon}</span><span class="alert-msg">${escapeHtml(a.msg)}</span></div>
@@ -389,7 +488,7 @@ async function loadSanctionsLists() {
         S.sanctionsLoaded = true;
         const displayCount = databaseTotal > 0 ? databaseTotal : S.sanctionedImos.size;
         const updated = data.updated ? ' · ' + new Date(data.updated).toLocaleDateString() : '';
-        const html = `<span style="color:var(--success);font-size:.68rem;font-family:var(--mono);">✓ Monitoring ${displayCount.toLocaleString()} sanctioned vessels${updated}</span>`;
+        const html = `<span style="color:var(--success);font-size:.68rem;font-family:var(--mono);">✓ ${i18n.get('monitoringSanctioned').replace('{n}', displayCount.toLocaleString())}${updated}</span>`;
         if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = html;
         const inline = document.getElementById('sanctionsStatusInline');
         if (inline) inline.innerHTML = html;
@@ -397,7 +496,7 @@ async function loadSanctionsLists() {
     } catch (e) {
         console.warn('Sanctions load failed:', e.message);
         S.sanctionsLoaded = true;
-        const html = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ Sanctions unavailable</span>`;
+        const html = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">${i18n.get('sanctionsUnavailable')}</span>`;
         if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = html;
     }
 }
@@ -411,7 +510,7 @@ function checkFleetSanctions() {
             const d = S.sanctionDetails.get(imo) || [];
             const lists = [...new Set(d.map(x => x.list))].join(', ');
             const v = S.vesselsDataMap.get(imo);
-            pushAlert('sanctioned', imo, v?.name || `IMO ${imo}`, `🚨 SANCTIONED: ${v?.name || 'IMO ' + imo} on ${lists || 'sanctions list'}`);
+            pushAlert('sanctioned', imo, v?.name || `IMO ${imo}`, i18n.get('sanctionedAlert').replace('{name}', v?.name || 'IMO ' + imo).replace('{lists}', lists || i18n.get('sanctionsList')));
         }
     }
     if (found) { renderVessels(S.trackedImosCache); updateFleetKPI(S.trackedImosCache); }
@@ -456,7 +555,7 @@ function onNoteInput(imo, ta) {
 
 function togglePriority(imo) {
     if (isPriority(imo)) S.priorities = S.priorities.filter(x => x !== imo);
-    else { S.priorities.push(imo); pushAlert('priority', imo, imo, `IMO ${imo} flagged as Priority`); }
+    else { S.priorities.push(imo); pushAlert('priority', imo, imo, i18n.get('alertPriority').replace('{imo}', imo)); }
     localStorage.setItem('vt_priorities', JSON.stringify(S.priorities));
     renderVessels(S.trackedImosCache);
 }
@@ -473,7 +572,7 @@ function updateStatus(msg, type = 'info') {
     if (!el.statusMsg) return;
     el.statusMsg.textContent = msg;
     el.statusMsg.className = `status-msg ${type === 'info' ? '' : type}`;
-    if (type === 'success') setTimeout(() => { if (el.statusMsg.textContent === msg) { el.statusMsg.textContent = 'Ready'; el.statusMsg.className = 'status-msg'; } }, 5000);
+    if (type === 'success') setTimeout(() => { if (el.statusMsg.textContent === msg) { el.statusMsg.textContent = i18n.get('ready'); el.statusMsg.className = 'status-msg'; } }, 5000);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -490,19 +589,19 @@ async function fetchWithTimeout(url, options = {}, timeout = 8000) {
 async function checkApiStatus() {
     try {
         await fetchWithTimeout(`${CONFIG.RENDER_API}/ping`, { method: 'GET' }, 5000);
-        const s = 'API: Online';
+        const s = i18n.get('apiOnline');
         const css = 'border-color:rgba(16,185,129,.4);color:var(--success);';
         if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
         if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
     } catch {
         try {
             await fetchWithTimeout(`${CONFIG.RAW_BASE}${CONFIG.TRACKED_PATH}`, { method: 'HEAD' }, 5000);
-            const s = 'API: Limited';
+            const s = i18n.get('apiLimited');
             const css = 'border-color:rgba(245,158,11,.4);color:var(--warning);';
             if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
             if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
         } catch {
-            const s = 'API: Offline';
+            const s = i18n.get('apiOffline');
             const css = 'border-color:rgba(239,68,68,.4);color:var(--danger);';
             if (el.apiStatus) { el.apiStatus.textContent = s; el.apiStatus.style.cssText = css; }
             if (el.apiStatusCard) { el.apiStatusCard.textContent = s; el.apiStatusCard.style.cssText = css; }
@@ -591,7 +690,7 @@ async function loadData() {
     if (S.isApiBusy) return;
     S.isApiBusy = true;
     if (el.refreshButton) el.refreshButton.disabled = true;
-    updateStatus('Refreshing...', 'info');
+    updateStatus(i18n.get('refreshing'), 'info');
 
     // Show a spinner inside the vessels list so the user knows something is happening
     const hasCachedVessels = S.trackedImosCache.length > 0;
@@ -599,8 +698,8 @@ async function loadData() {
         el.vesselsContainer.innerHTML = `
             <div class="empty-state">
                 <div class="spinner" style="width:28px;height:28px;margin:0 auto 14px;"></div>
-                <p style="color:var(--text-soft);">Loading fleet data…</p>
-                <small style="font-family:var(--mono);color:var(--accent);">Connecting to GitHub</small>
+                <p style="color:var(--text-soft);">${i18n.get('loadingFleet')}</p>
+                <small style="font-family:var(--mono);color:var(--accent);">${i18n.get('connectingGit')}</small>
             </div>`;
     }
 
@@ -640,10 +739,10 @@ async function loadData() {
         updateSystemHealth(Date.now(), vl.length, vi.source);
         updateFleetKPI(tracked);
         if (el.vesselCount) el.vesselCount.textContent = `${tracked.length} vessel${tracked.length !== 1 ? 's' : ''} tracked`;
-        if (el.dataStats) el.dataStats.textContent = `${vl.length} in database · ${vi.source}`;
+        if (el.dataStats) el.dataStats.textContent = `${vl.length} ${i18n.get('inDatabase')} · ${vi.source}`;
         renderVessels(S.trackedImosCache);
         if (S.mapInitialized) updateMapMarkers();
-        updateStatus(`Fleet loaded — ${tracked.length} vessels`, 'success');
+        updateStatus(`${i18n.get('fleetLoaded')} — ${tracked.length} ${i18n.get('vessels')}`, 'success');
         // Fetch real last-commit time from GitHub API (non-blocking)
         fetchFileLastCommit(CONFIG.VESSELS_PATH).then(date => {
             updateLastModified(date || new Date());
@@ -682,13 +781,13 @@ function generateAlerts(newMap, trackedImos) {
         const ns = getVesselStatus(v), prev = S.previousVesselStates.get(imo), age = formatSignalAge(v.last_pos_utc);
         if (!isFirst && prev) {
             if (prev.status !== ns) {
-                if (ns === 'STALLED') pushAlert('stalled', imo, v.name, `${v.name || 'IMO ' + imo} has stopped moving`);
-                if (ns === 'AT PORT') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} arrived at port`);
-                if (ns === 'AT ANCHOR') pushAlert('arrived', imo, v.name, `${v.name || 'IMO ' + imo} now at anchor`);
+                if (ns === 'STALLED') pushAlert('stalled', imo, v.name, i18n.get('alertStalled').replace('{name}', v.name || 'IMO ' + imo));
+                if (ns === 'AT PORT') pushAlert('arrived', imo, v.name, i18n.get('alertArrivedPort').replace('{name}', v.name || 'IMO ' + imo));
+                if (ns === 'AT ANCHOR') pushAlert('arrived', imo, v.name, i18n.get('alertAtAnchor').replace('{name}', v.name || 'IMO ' + imo));
             }
-            if (age.rawAgeMs > CONFIG.STALE_THRESHOLD_MS && prev.signalAgeMs <= CONFIG.STALE_THRESHOLD_MS) pushAlert('stale', imo, v.name, `${v.name || 'IMO ' + imo} AIS signal lost (${age.ageText})`);
+            if (age.rawAgeMs > CONFIG.STALE_THRESHOLD_MS && prev.signalAgeMs <= CONFIG.STALE_THRESHOLD_MS) pushAlert('stale', imo, v.name, i18n.get('alertSignalLost').replace('{name}', v.name || 'IMO ' + imo).replace('{age}', age.ageText));
             const dd = parseFloat(v.destination_distance_nm);
-            if (!isNaN(dd) && dd <= 50 && (prev.destDist == null || prev.destDist > 50)) pushAlert('approaching', imo, v.name, `${v.name || 'IMO ' + imo} approaching (${dd.toFixed(0)} nm)`);
+            if (!isNaN(dd) && dd <= 50 && (prev.destDist == null || prev.destDist > 50)) pushAlert('approaching', imo, v.name, i18n.get('alertApproaching').replace('{name}', v.name || 'IMO ' + imo).replace('{dist}', dd.toFixed(0)));
         }
         S.previousVesselStates.set(imo, { status: ns, signalAgeMs: age.rawAgeMs, destDist: parseFloat(v.destination_distance_nm) || null });
     }
@@ -696,13 +795,13 @@ function generateAlerts(newMap, trackedImos) {
 }
 
 function updateSystemHealth(lastMod, count, source) {
-    if (!lastMod) { if (el.systemHealth) el.systemHealth.textContent = 'Unknown'; return; }
+    if (!lastMod) { if (el.systemHealth) el.systemHealth.textContent = i18n.get('unknown'); return; }
     const ms = Date.now() - lastMod;
     let text, color, bg;
-    if (ms < 3600000) { text = '● Excellent'; color = 'var(--success)'; bg = 'rgba(16,185,129,.12)'; }
-    else if (ms < CONFIG.STALE_THRESHOLD_MS) { text = '● Good'; color = 'var(--warning)'; bg = 'rgba(245,158,11,.12)'; }
-    else if (ms < CONFIG.CRITICAL_THRESHOLD_MS) { text = '● Stale'; color = '#f97316'; bg = 'rgba(249,115,22,.12)'; }
-    else { text = '● Critical'; color = 'var(--danger)'; bg = 'rgba(239,68,68,.12)'; }
+    if (ms < 3600000) { text = i18n.get('healthExcellent'); color = 'var(--success)'; bg = 'rgba(16,185,129,.12)'; }
+    else if (ms < CONFIG.STALE_THRESHOLD_MS) { text = i18n.get('healthGood'); color = 'var(--warning)'; bg = 'rgba(245,158,11,.12)'; }
+    else if (ms < CONFIG.CRITICAL_THRESHOLD_MS) { text = i18n.get('healthStale'); color = '#f97316'; bg = 'rgba(249,115,22,.12)'; }
+    else { text = i18n.get('healthCritical'); color = 'var(--danger)'; bg = 'rgba(239,68,68,.12)'; }
     if (el.systemHealth) { el.systemHealth.textContent = text; el.systemHealth.style.cssText = `color:${color};background:${bg};border-color:${color}40;`; }
 }
 
@@ -792,16 +891,16 @@ function closeMobileFilter(e) {
 
 async function addVessel() {
     const imo = el.imoInput.value.trim();
-    if (!imo || !/^\d{7}$/.test(imo)) { updateStatus('Invalid IMO — must be 7 digits', 'error'); return; }
-    if (!validateIMO(imo)) { updateStatus('Invalid IMO — checksum failed', 'error'); return; }
-    if (S.trackedImosCache.includes(imo)) { updateStatus('Already tracked', 'warning'); return; }
+    if (!imo || !/^\d{7}$/.test(imo)) { updateStatus(i18n.get('statusInvalidDigits'), 'error'); return; }
+    if (!validateIMO(imo)) { updateStatus(i18n.get('statusInvalidCheck'), 'error'); return; }
+    if (S.trackedImosCache.includes(imo)) { updateStatus(i18n.get('statusAlreadyTracked'), 'warning'); return; }
     if (S.isApiBusy) return;
-    showLoading(`Adding IMO ${imo}...`);
+    showLoading(i18n.get('addingImo').replace('{imo}', imo));
     await updateTrackedImos(imo, true);
-    pushAlert('added', imo, imo, `IMO ${imo} added to fleet tracking`);
+    pushAlert('added', imo, imo, i18n.get('alertAdded').replace('{imo}', imo));
     if (S.sanctionsLoaded && S.sanctionedImos.has(imo)) {
         const d = S.sanctionDetails.get(imo) || [];
-        pushAlert('sanctioned', imo, imo, `🚨 SANCTIONED VESSEL added: IMO ${imo} on ${[...new Set(d.map(x => x.list))].join(', ') || 'sanctions list'}`);
+        pushAlert('sanctioned', imo, imo, i18n.get('alertSanctioned').replace('{imo}', imo).replace('{lists}', [...new Set(d.map(x => x.list))].join(', ') || i18n.get('sanctionsList')));
     }
     if (S.staticCache.has(imo)) {
         updateStaticCache(imo, S.staticCache.get(imo)).catch(e => console.warn('Static cache on add:', e));
@@ -821,13 +920,13 @@ async function addVessel() {
 
 function removeIMO(imo) {
     const name = S.vesselsDataMap.get(imo)?.name || `IMO ${imo}`;
-    if (el.confirmText) el.confirmText.textContent = `Remove "${name}" (IMO ${imo}) from fleet tracking?`;
+    if (el.confirmText) el.confirmText.textContent = i18n.get('removeConfirm').replace('{name}', name).replace('{imo}', imo);
     if (el.confirmModal) el.confirmModal.classList.remove('hidden');
     S.vesselToRemove = imo;
 }
 
 async function removeIMOConfirmed(imo) {
-    showLoading(`Removing IMO ${imo}...`);
+    showLoading(i18n.get('removingImo').replace('{imo}', imo));
     await updateTrackedImos(imo, false);
     hideLoading();
 }
@@ -837,13 +936,13 @@ async function updateTrackedImos(imo, isAdd) {
     if (el.refreshButton) el.refreshButton.disabled = true;
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            updateStatus(`${isAdd ? 'Adding' : 'Removing'} (${attempt}/2)...`);
+            updateStatus(isAdd ? i18n.get('addingAttempt').replace('{n}', attempt) : i18n.get('removingAttempt').replace('{n}', attempt));
             const result = await fetchGitHubData(CONFIG.TRACKED_PATH, []);
             let list = (Array.isArray(result.data) ? result.data : result.data?.tracked_imos || []).map(String).filter(Boolean);
             if (isAdd) { if (!list.includes(imo)) list.push(imo); } else list = list.filter(x => x !== imo);
             list.sort();
             await ghPut(CONFIG.TRACKED_PATH, list, null, `${isAdd ? 'Add' : 'Remove'} IMO ${imo}`);
-            updateStatus(`${isAdd ? 'Added' : 'Removed'} IMO ${imo}`, 'success');
+            updateStatus(isAdd ? i18n.get('addedImo').replace('{imo}', imo) : i18n.get('removedImo').replace('{imo}', imo), 'success');
             if (isAdd) { el.imoInput.value = ''; el.namePreview.innerHTML = ''; el.addBtn.disabled = true; }
 
             // 🔓 Release busy flag so loadData() can run
@@ -853,9 +952,9 @@ async function updateTrackedImos(imo, isAdd) {
             await loadData();   // ✅ Now the list will refresh immediately
             break;
         } catch (err) {
-            if (attempt < 2) { updateStatus('Retrying...', 'warning'); await new Promise(r => setTimeout(r, 1000)); }
+            if (attempt < 2) { updateStatus(i18n.get('retrying'), 'warning'); await new Promise(r => setTimeout(r, 1000)); }
             else {
-                updateStatus(`Failed: ${err.message}`, 'error');
+                updateStatus(i18n.get('failed').replace('{msg}', err.message), 'error');
                 if (isAdd) S.trackedImosCache.push(imo); else S.trackedImosCache = S.trackedImosCache.filter(x => x !== imo);
                 saveToLocalStorage();
                 renderVessels(S.trackedImosCache);
@@ -881,17 +980,17 @@ function setupImoInput() {
 
         if (!imo) return;
         if (!/^\d{7}$/.test(imo)) {
-            if (imo.length > 0) el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ Must be exactly 7 digits</span>`;
+            if (imo.length > 0) el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">${i18n.get('invalidImoDigits')}</span>`;
             return;
         }
         if (!validateIMO(imo)) {
             el.imoInput.style.borderColor = 'var(--danger)';
-            el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">✕ Invalid IMO checksum</span>`;
+            el.namePreview.innerHTML = `<span style="color:var(--danger);font-size:.78rem;">${i18n.get('invalidImoCheck')}</span>`;
             return;
         }
         if (S.trackedImosCache.includes(imo)) {
             el.imoInput.style.borderColor = 'var(--warning)';
-            el.namePreview.innerHTML = `<span style="color:var(--warning);font-size:.78rem;">⚠ Already tracked</span>`;
+            el.namePreview.innerHTML = `<span style="color:var(--warning);font-size:.78rem;">${i18n.get('alreadyTracked')}</span>`;
             return;
         }
         el.imoInput.style.borderColor = 'var(--success)';
@@ -906,14 +1005,14 @@ function setupImoInput() {
         }
         S.debounceTimer = setTimeout(async () => {
             el.addBtn.disabled = true;
-            el.namePreview.innerHTML = warnHtml + `<span style="color:var(--text-soft);font-size:.78rem;">🔍 Looking up...</span>`;
+            el.namePreview.innerHTML = warnHtml + `<span style="color:var(--text-soft);font-size:.78rem;">${i18n.get('lookingUp')}</span>`;
             try {
                 let data = null;
                 for (const ep of [`${CONFIG.RENDER_API}/vessel-full/${imo}`, `${CONFIG.RENDER_API}/vessel/${imo}`]) {
                     try { const r = await fetchWithTimeout(ep, {}, 5000); if (r.ok) { data = await r.json(); break; } } catch { }
                 }
                 if (!data || data.found === false) {
-                    el.namePreview.innerHTML = warnHtml + `<span style="color:var(--danger);font-size:.78rem;">✕ IMO ${imo} not found</span>`;
+                    el.namePreview.innerHTML = warnHtml + `<span style="color:var(--danger);font-size:.78rem;">${i18n.get('imoNotFound').replace('{imo}', imo)}</span>`;
                     el.addBtn.disabled = !isSanc;
                     return;
                 }
@@ -923,7 +1022,7 @@ function setupImoInput() {
                 el.addBtn.disabled = false;
                 updateStaticCache(imo, data).catch(() => { });
             } catch {
-                el.namePreview.innerHTML = warnHtml + `<span style="color:var(--warning);font-size:.78rem;">⚠ Lookup failed — you can still add IMO ${imo}</span>`;
+                el.namePreview.innerHTML = warnHtml + `<span style="color:var(--warning);font-size:.78rem;">${i18n.get('lookupFailed').replace('{imo}', imo)}</span>`;
                 el.addBtn.disabled = false;
             }
         }, 800);
@@ -936,7 +1035,7 @@ function setupImoInput() {
 
 function renderVessels(tracked) {
     if (!tracked || tracked.length === 0) {
-        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🚢</div><p>No vessels tracked yet.</p><small>Add an IMO number above</small></div>`;
+        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🚢</div><p>${i18n.get('noVessels')}</p><small>${i18n.get('addImoHint')}</small></div>`;
         return;
     }
     const ORDER = { UNDERWAY: 0, 'AT PORT': 1, 'AT ANCHOR': 2, STALLED: 3, 'DATA PENDING': 4 };
@@ -952,7 +1051,7 @@ function renderVessels(tracked) {
         const v = S.vesselsDataMap.get(imo) || {};
         const status = getVesselStatus(v), ageData = formatSignalAge(v.last_pos_utc);
         const prio = isPriority(imo), sanc = S.sanctionedImos.has(imo);
-        return { imo, v, status, ageData, name: v.name || 'Loading...', rawAgeMs: ageData.rawAgeMs, isPending: !v.name, prio, sanc };
+        return { imo, v, status, ageData, name: v.name || i18n.get('loadingDots'), rawAgeMs: ageData.rawAgeMs, isPending: !v.name, prio, sanc };
     }).filter(({ imo, v, status, ageData }) => passesFilter(imo, v, status) && passesAgeFilter(ageData));
 
     items.sort((a, b) => {
@@ -971,7 +1070,7 @@ function renderVessels(tracked) {
     });
 
     if (!items.length) {
-        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>No vessels match this filter.</p></div>`;
+        el.vesselsContainer.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>${i18n.get('noMatch')}</p></div>`;
         return;
     }
 
@@ -1015,7 +1114,7 @@ function renderVessels(tracked) {
                             <div>
                                 <div class="vessel-name-block">
                                     ${fh}
-                                    <span class="vessel-name">${escapeHtml(v.name || 'Loading...')}</span>
+                                    <span class="vessel-name">${escapeHtml(v.name || i18n.get('loadingDots'))}</span>
                                     ${sanc ? `<span class="tag sanction-tag">🚨 Sanctioned</span>` : prio ? `<span style="font-size:.82rem;">🚩</span>` : ''}
                                     ${loaHtml}
                                 </div>
@@ -1242,7 +1341,7 @@ function init() {
         updateAlertBadge();
 
         // Load cache immediately
-        if (loadCachedData()) updateStatus('Loaded from cache', 'success');
+        if (loadCachedData()) updateStatus(i18n.get('cachedLoad'), 'success');
 
         // IMO input
         setupImoInput();
@@ -1354,7 +1453,7 @@ function init() {
     checkApiStatus();
     loadSanctionsLists().catch(e => {
         console.warn('Sanctions:', e);
-        if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">⚠ Sanctions unavailable</span>`;
+        if (el.sanctionsStatus) el.sanctionsStatus.innerHTML = `<span style="color:var(--warning);font-size:.68rem;font-family:var(--mono);">${i18n.get('sanctionsUnavailable')}</span>`;
     });
 
     // Auto-refresh
