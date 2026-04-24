@@ -550,24 +550,39 @@ function _showPopup(handoffs){
     ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 }
 
-window._dosRespond=async function(hoId,imo,action,draftEnc){
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
-            {method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
-            body:JSON.stringify({handoff_id:hoId,action})},10000);
-        if(!r.ok)throw new Error(`HTTP ${r.status}`);
+window._dosRespond = async function (hoId, imo, action, draftEnc) {
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.S.currentUser.access_token}`
+                },
+                body: JSON.stringify({ handoff_id: hoId, action })   // <-- must be handoff_id
+            }, 10000);
+
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
         _q(`dos-ho-${hoId}`)?.remove();
-        if(action==='accept'&&draftEnc){
-            const draft=JSON.parse(decodeURIComponent(draftEnc));
-            localStorage.setItem(_dk(imo),JSON.stringify(draft));
-            window.showToast('📄 Dossier accepté — brouillon sauvegardé','success',4000);
-            if(!window.S?.trackedImosCache?.includes(imo)&&window.addVesselByIMO)
-                window.addVesselByIMO(imo).catch(()=>{});
-        }else window.showToast('Dossier refusé','info',3000);
-        window.S.pendingDossierCount=Math.max(0,(window.S.pendingDossierCount||1)-1);
+
+        if (action === 'accept' && draftEnc) {
+            const draft = JSON.parse(decodeURIComponent(draftEnc));
+            localStorage.setItem(_dk(imo), JSON.stringify(draft));
+            window.showToast('📄 Dossier accepted — draft saved', 'success', 4000);
+            if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
+                window.addVesselByIMO(imo).catch(() => {});
+        } else {
+            window.showToast('Dossier refused', 'info', 3000);
+        }
+
+        window.S.pendingDossierCount = Math.max(0, (window.S.pendingDossierCount || 1) - 1);
         window.updateAlertBadge?.();
-        if(!document.querySelector('[id^="dos-ho-"]'))_q('dosHoOverlay')?.remove();
-    }catch(e){window.showToast(`Erreur: ${e.message}`,'danger');}
+        if (!document.querySelector('[id^="dos-ho-"]')) _q('dosHoOverlay')?.remove();
+
+    } catch (e) {
+        window.showToast(`Error: ${e.message}`, 'danger');
+    }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
