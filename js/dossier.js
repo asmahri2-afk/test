@@ -566,28 +566,28 @@ window._dosRespond = async function (hoId, imo, action, draftEnc) {
 
         _q(`dos-ho-${hoId}`)?.remove();
 
-        if (action === 'accept' && draftEnc && draftEnc !== 'undefined') {
-            try {
-                const draft = JSON.parse(decodeURIComponent(draftEnc));
-                localStorage.setItem(_dk(imo), JSON.stringify(draft));
-                window.showToast(`📄 Dossier accepted for IMO ${imo}. Open the Dossier tab to view.`, 'success', 8000);
-                if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
-                    window.addVesselByIMO(imo).catch(() => {});
-            } catch (parseErr) {
-                console.warn('Failed to parse dossier draft data, saving raw:', parseErr);
-                // Still save the raw encoded data as fallback
-                localStorage.setItem(_dk(imo), draftEnc);
-                window.showToast('📄 Dossier accepted (draft saved)', 'success', 4000);
-            }
-        } else if (action === 'accept') {
-            window.showToast('📄 Dossier accepted', 'success', 4000);
-        } else {
-            window.showToast('Dossier refused', 'info', 3000);
-        }
+if (action === 'accept' && draftEnc && draftEnc !== 'undefined') {
+    try {
+        const draft = JSON.parse(decodeURIComponent(draftEnc));
+        localStorage.setItem(_dk(imo), JSON.stringify(draft));
+        window.showToast(`📄 Dossier accepted for IMO ${imo}. Open the Dossier tab to view.`, 'success', 8000);
+    } catch (parseErr) {
+        console.warn('Failed to parse dossier draft data, saving raw:', parseErr);
+        // Still save the raw encoded data as fallback
+        localStorage.setItem(_dk(imo), draftEnc);
+        window.showToast('📄 Dossier accepted (draft saved)', 'success', 4000);
+    }
+    // Reload fleet data so the new vessel card appears (Worker already added the IMO)
+    setTimeout(() => window.loadData?.(), 800);
+} else if (action === 'accept') {
+    window.showToast('📄 Dossier accepted', 'success', 4000);
+} else {
+    window.showToast('Dossier refused', 'info', 3000);
+}
 
-        window.S.pendingDossierCount = Math.max(0, (window.S.pendingDossierCount || 1) - 1);
-        window.updateAlertBadge?.();
-        if (!document.querySelector('[id^="dos-ho-"]')) _q('dosHoOverlay')?.remove();
+window.S.pendingDossierCount = Math.max(0, (window.S.pendingDossierCount || 1) - 1);
+window.updateAlertBadge?.();
+if (!document.querySelector('[id^="dos-ho-"]')) _q('dosHoOverlay')?.remove();
 
     } catch (e) {
         window.showToast(`Error: ${e.message}`, 'danger');
