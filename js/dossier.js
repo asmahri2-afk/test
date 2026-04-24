@@ -559,19 +559,28 @@ window._dosRespond = async function (hoId, imo, action, draftEnc) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${window.S.currentUser.access_token}`
                 },
-                body: JSON.stringify({ handoff_id: hoId, action })   // <-- must be handoff_id
+                body: JSON.stringify({ handoff_id: hoId, action })
             }, 10000);
 
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
 
         _q(`dos-ho-${hoId}`)?.remove();
 
-        if (action === 'accept' && draftEnc) {
-            const draft = JSON.parse(decodeURIComponent(draftEnc));
-            localStorage.setItem(_dk(imo), JSON.stringify(draft));
-            window.showToast('📄 Dossier accepted — draft saved', 'success', 4000);
-            if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
-                window.addVesselByIMO(imo).catch(() => {});
+        if (action === 'accept' && draftEnc && draftEnc !== 'undefined') {
+            try {
+                const draft = JSON.parse(decodeURIComponent(draftEnc));
+                localStorage.setItem(_dk(imo), JSON.stringify(draft));
+                window.showToast('📄 Dossier accepted — draft saved', 'success', 4000);
+                if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
+                    window.addVesselByIMO(imo).catch(() => {});
+            } catch (parseErr) {
+                console.warn('Failed to parse dossier draft data, saving raw:', parseErr);
+                // Still save the raw encoded data as fallback
+                localStorage.setItem(_dk(imo), draftEnc);
+                window.showToast('📄 Dossier accepted (draft saved)', 'success', 4000);
+            }
+        } else if (action === 'accept') {
+            window.showToast('📄 Dossier accepted', 'success', 4000);
         } else {
             window.showToast('Dossier refused', 'info', 3000);
         }
