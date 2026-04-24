@@ -132,13 +132,16 @@ window.login = async function(username, pin) {
     window.S.fleetMode = 'personal';
     window.updateAuthIcon();
     window.startRealtimeHandoffListener();
+    if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();  // dossier
     window.closeAuthModal();
     if (window.innerWidth >= 641 && window.el.addCard) window.el.addCard.classList.remove('hidden');
     window.loadData();
     window.loadUserProfile();
     window.injectHandoffBadge();
     window._handoffShownOnLogin = false;
+    window._dosShownOnLogin = false;    // dossier
     window.startHandoffPolling();
+    if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();  // dossier
     return data;
 };
 window.logout = function() {
@@ -149,7 +152,10 @@ window.logout = function() {
     if (window.el.addCard) window.el.addCard.classList.add('hidden');
     window.loadData();
     window.stopHandoffPolling();
+    if (window.stopDossierHandoffPolling) window.stopDossierHandoffPolling();  // dossier
     window.updateHandoffBadge(0);
+    window.S.pendingDossierCount = 0;    // dossier
+    window.updateAlertBadge();
 };
 window.deleteAccount = async function() {
     if (!window.S.currentUser) return;
@@ -359,7 +365,7 @@ window.showToast = function(message, type = 'info', duration = 4000) {
     setTimeout(() => toast.remove(), duration);
 };
 
-// Handoff polling stubs — real implementations in sof.js override these
+// Handoff polling stubs — real implementations in sof.js/dossier.js override these
 window.startHandoffPolling = function() {};
 window.stopHandoffPolling = function() {};
 window.startRealtimeHandoffListener = function() {};
