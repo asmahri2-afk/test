@@ -570,7 +570,7 @@ window._dosRespond = async function (hoId, imo, action, draftEnc) {
             try {
                 const draft = JSON.parse(decodeURIComponent(draftEnc));
                 localStorage.setItem(_dk(imo), JSON.stringify(draft));
-                window.showToast('📄 Dossier accepted — draft saved', 'success', 4000);
+                window.showToast(`📄 Dossier accepted for IMO ${imo}. Open the Dossier tab to view.`, 'success', 8000);
                 if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
                     window.addVesselByIMO(imo).catch(() => {});
             } catch (parseErr) {
