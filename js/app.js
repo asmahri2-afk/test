@@ -47,6 +47,7 @@ window.S = {
     lastFlowRunMs: null,
     portCallsCache: new Map(),
     pendingHandoffCount: 0,
+    pendingDossierCount: 0,
 };
 
 // ── DOM REFS ─────────────────────────────────────────────────────────────────
@@ -341,7 +342,8 @@ window.renderAlerts = function() {
 window.updateAlertBadge = function() {
     const alertsUnread = window.S.alerts.filter(a => !a.read).length;
     const handoffs = window.S.pendingHandoffCount || 0;
-    const n = alertsUnread + handoffs;
+    const dossiers = window.S.pendingDossierCount || 0;
+    const n = alertsUnread + handoffs + dossiers;
     [window.el.alertBadge, window.el.navBadge].forEach(b => {
         if (!b) return;
         b.textContent = n > 9 ? '9+' : n;
@@ -352,6 +354,8 @@ window.updateAlertBadge = function() {
 window.handleBellClick = function() {
     if ((window.S.pendingHandoffCount || 0) > 0) {
         if (window.checkAndShowHandoffs) window.checkAndShowHandoffs(true);
+    } else if ((window.S.pendingDossierCount || 0) > 0) {
+        if (window._chkPending) window._chkPending(true);
     } else {
         window.toggleAlertPanel();
     }
@@ -495,7 +499,7 @@ window.fetchWithTimeout = async function(url, options = {}, timeout = 8000) {
             if (window.el.addCard) window.el.addCard.classList.add('hidden');
             if (window.stopHandoffPolling) window.stopHandoffPolling();
             window.updateHandoffBadge(0);
-            setTimeout(() => window.loadData(), 200); // delay: wait for current loadData finally to clear isApiBusy
+            window.loadData();
             setTimeout(() => {
                 window.showToast('🔒 Session expired — please login again', 'danger', 5000);
                 setTimeout(() => window.openAuthModal('login'), 1500);
@@ -1177,7 +1181,7 @@ window.setupImoInput = function() {
 
         if (window.S.staticCache.has(imo)) {
             const c = window.S.staticCache.get(imo), fc = window.getFlagCode(c.flag);
-            const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" loading="lazy" decoding="async" alt="">` : '';
+            const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">` : '';
             const vesselName = c.name || window.S.vesselsDataMap.get(imo)?.name || `IMO ${imo}`;
             const ownerLine = c.equasis_owner ? `<div style="font-size:.72rem;color:var(--text-soft);margin-top:3px;">🏢 ${window.escapeHtml(c.equasis_owner)}${c.mmsi ? ` · 📡 ${window.escapeHtml(c.mmsi)}` : ''}</div>` : '';
             window.el.namePreview.innerHTML = warnHtml + `<div style="display:flex;align-items:center;gap:5px;font-size:.8rem;">${fh}<strong style="color:var(--text-main);">${window.escapeHtml(vesselName)}</strong><span style="font-size:.65rem;background:var(--bg-elevated);padding:1px 5px;border-radius:4px;color:var(--text-soft);">cached</span></div>${ownerLine}`;
@@ -1222,7 +1226,7 @@ window.setupImoInput = function() {
 
                 const vesselName = data.vessel_name || data.name || `IMO ${imo}`;
                 const fc = window.getFlagCode(data.flag);
-                const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" loading="lazy" decoding="async" alt="">` : '';
+                const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" style="width:18px;height:13px;border:1px solid var(--border);border-radius:2px;margin-right:5px;" alt="">` : '';
                 const ownerLine = data.equasis_owner ? `<div style="font-size:.72rem;color:var(--text-soft);margin-top:3px;">🏢 ${window.escapeHtml(data.equasis_owner)}${data.mmsi || data['MMSI'] ? ` · 📡 ${window.escapeHtml(data.mmsi || data['MMSI'])}` : ''}</div>` : '';
 
                 window.el.namePreview.innerHTML = warnHtml + `
@@ -1348,7 +1352,7 @@ window.renderVessels = function(tracked) {
             const sc = { UNDERWAY: 'underway', 'AT PORT': 'at_port', 'AT ANCHOR': 'at_anchor', STALLED: 'stalled' }[status] || '';
             const tc = { UNDERWAY: 'status-underway', 'AT PORT': 'status-at_port', 'AT ANCHOR': 'status-at_anchor', STALLED: 'status-stalled', 'DATA PENDING': 'status-unknown' }[status] || 'status-unknown';
             const fc = window.getFlagCode(v.flag || sc2?.flag);
-            const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" class="flag-icon" loading="lazy" decoding="async" alt="${window.escapeHtml(v.flag || sc2?.flag || '')}" />` : `<div class="flag-placeholder">🏴</div>`;
+            const fh = fc ? `<img src="https://flagcdn.com/24x18/${fc.toLowerCase()}.png" class="flag-icon" alt="${window.escapeHtml(v.flag || sc2?.flag || '')}" />` : `<div class="flag-placeholder">🏴</div>`;
             const draughtNum = window.parseNum(v.draught_m || sc2?.draught_m);
             const loaVal = v.length_overall_m || sc2?.length_overall_m;
             const loaHtml = loaVal ? `<span class="vessel-loa">${Number(loaVal).toFixed(0)}m${draughtNum != null ? ' / ' + draughtNum.toFixed(1) + 'm' : ''}</span>` : '';
@@ -1480,7 +1484,7 @@ window.renderVessels = function(tracked) {
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openSOF('${imo}')">📋 SOF</button>
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openPortCallsEditor('${imo}', '${(v.name || imo).replace(/'/g, "\\'")}')"> 📍 Ports </button>
                         <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? i18n.get('priorityBtn') : i18n.get('flagBtn')}</button>
-                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();removeIMO('${imo}')">${i18n.get('remove')}</button>
+                        <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;min-width:28px;" onclick="event.stopPropagation();removeIMO('${imo}')" title="${i18n.get('remove')}">✕</button>
                     </div>
                 </div>
             `;
@@ -1518,7 +1522,7 @@ window.toggleView = function(view) {
         window.el.mapView.style.display = 'block';
         [window.el.viewListBtn, document.getElementById('viewListBtnInner')].forEach(b => b?.classList.remove('active'));
         [window.el.viewMapBtn, document.getElementById('viewMapBtnInner')].forEach(b => b?.classList.add('active'));
-        setTimeout(() => window.initMap(), 60); // invalidateSize is called inside _doInit after Leaflet loads
+        setTimeout(() => { window.initMap(); window.S.mapInstance?.invalidateSize(); }, 60);
     }
 };
 
@@ -2081,10 +2085,13 @@ window.init = function() {
     window.S.refreshInterval = setInterval(() => { window.loadData(); window.checkApiStatus(); }, window.CONFIG.REFRESH_INTERVAL);
 
     if (window.S.currentUser?.access_token) {
-        if (window.startRealtimeHandoffListener) window.startRealtimeHandoffListener();
+        window.startRealtimeHandoffListener();
+        if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
         if (window.injectHandoffBadge) window.injectHandoffBadge();
         window._handoffShownOnLogin = false;
+        window._dosShownOnLogin = false;
         if (window.startHandoffPolling) window.startHandoffPolling();
+        if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
     }
 };
 
@@ -2101,6 +2108,24 @@ window.closeFilterMenu = function(event) {
         filterMenu.classList.remove('show');
     }
 };
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOSSIER — lazy loader + stubs
+// ─────────────────────────────────────────────────────────────────────────────
+window._dosLazy = function(imo) {
+    if (window.openDossier) { window.openDossier(imo); return; }
+    // First click: load dossier.js then open
+    const s = document.createElement('script');
+    s.src = 'js/dossier.js?v=1';
+    s.onload = () => window.openDossier(imo);
+    s.onerror = () => window.showToast('Erreur chargement Dossier', 'danger');
+    document.head.appendChild(s);
+};
+// Stubs so auth.js login/logout can call these before dossier.js loads
+window.startDossierHandoffPolling  = function() {};
+window.stopDossierHandoffPolling   = function() {};
+window.startDossierRealtimeListener = function() {};
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', window.init);
