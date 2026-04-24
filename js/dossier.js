@@ -467,7 +467,8 @@ window._dosSend=async function(imo){
         const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/users/list`,
             {headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`}},8000);
         if(!r.ok)throw new Error('Impossible de charger les utilisateurs');
-        const users=await r.json();
+        const data=await r.json();
+        const users=data.users||[];
         const el=_q('dos-send-list');if(!el)return;
         if(!users.length){el.innerHTML='<div style="color:var(--text-soft);font-size:.8rem;">Aucun collègue.</div>';return;}
         el.innerHTML=users.map(u=>`
