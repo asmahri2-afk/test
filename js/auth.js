@@ -130,6 +130,21 @@ window.login = async function(username, pin) {
     if (!res.ok) throw new Error(data.error || 'Login failed');
     window.saveSession({ username: data.username, access_token: data.access_token, user_id: data.user_id });
     window.S.fleetMode = 'personal';
+    if (!window.openDossier) {
+    const script = document.createElement('script');
+    script.src = 'js/dossier.js?v=1';   // update version if needed
+    script.onload = () => {
+        // Now the real functions from dossier.js exist
+        if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
+        if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
+    };
+    script.onerror = () => console.error('[Dossier] Failed to load dossier.js');
+    document.head.appendChild(script);
+} else {
+    // dossier.js already loaded (shouldn't happen on first login, but safe)
+    if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
+    if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
+}
     window.updateAuthIcon();
     window.startRealtimeHandoffListener();
     if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();  // dossier
