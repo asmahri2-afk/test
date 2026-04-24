@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>VesselTracker — System Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#020c1a" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep:#020c1a;--bg-base:#040e1e;--bg-card:#081626;--bg-elevated:#0c1d32;--bg-input:#091527;
+            --border:#12283f;--border-soft:#1a3a58;
+            --accent:#0ea5e9;--accent-dim:rgba(14,165,233,0.12);--accent-glow:rgba(14,165,233,0.35);
+            --success:#10b981;--success-dim:rgba(16,185,129,0.12);
+            --warning:#f59e0b;--warning-dim:rgba(245,158,11,0.12);
+            --danger:#ef4444;--danger-dim:rgba(239,68,68,0.12);
+            --purple:#8b5cf6;--teal:#14b8a6;
+            --urgent:#f43f5e;--urgent-dim:rgba(244,63,94,0.15);
+            --text-main:#c8d8e8;--text-soft:#4e6a84;--text-muted:#243648;
+            --mono:'DM Mono',monospace;--sans:'Syne',system-ui,sans-serif;
+            --radius:10px;--radius-lg:14px;--header-h:58px;
+        }
+        /* LIGHT THEME */
+        [data-theme="light"] {
+            --bg-deep:#f0f4f8;--bg-base:#f5f7fa;--bg-card:#ffffff;--bg-elevated:#edf1f7;--bg-input:#f8f9fb;
+            --border:#d0dae6;--border-soft:#bcc8d6;
+            --accent:#0284c7;--accent-dim:rgba(2,132,199,0.1);--accent-glow:rgba(2,132,199,0.25);
+            --success:#059669;--success-dim:rgba(5,150,105,0.1);
+            --warning:#d97706;--warning-dim:rgba(217,119,6,0.1);
+            --danger:#dc2626;--danger-dim:rgba(220,38,38,0.1);
+            --text-main:#1e293b;--text-soft:#64748b;--text-muted:#94a3b8;
+        }
+        [data-theme="light"] .app-header{background:linear-gradient(180deg,#e8eef5 0%,var(--bg-base) 100%);}
+        [data-theme="light"] .brand-text h1{color:#1e293b;}
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html{scroll-behavior:smooth;}
+        body{font-family:var(--sans);background:var(--bg-deep);color:var(--text-main);min-height:100vh;line-height:1.5;}
+        ::-webkit-scrollbar{width:4px;height:4px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:var(--border-soft);border-radius:2px;}
+
+        /* HEADER */
+        .app-header{background:linear-gradient(180deg,#030f20 0%,var(--bg-base) 100%);border-bottom:1px solid var(--border);padding:0 max(16px,env(safe-area-inset-left));height:var(--header-h);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:300;backdrop-filter:blur(12px);}
+        .header-brand{display:flex;align-items:center;gap:10px;}
+        .radar-wrap{position:relative;width:30px;height:30px;flex-shrink:0;}
+        .radar-core{width:30px;height:30px;border-radius:50%;background:radial-gradient(circle,rgba(14,165,233,0.2) 0%,transparent 70%);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;}
+        .radar-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);}
+        .radar-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.5);width:30px;height:30px;border-radius:50%;border:1px solid var(--accent);opacity:0;animation:radar-pulse 2.5s ease-out infinite;}
+        .radar-ring:nth-child(2){animation-delay:.85s;}.radar-ring:nth-child(3){animation-delay:1.7s;}
+        @keyframes radar-pulse{0%{transform:translate(-50%,-50%) scale(0.5);opacity:.8;}100%{transform:translate(-50%,-50%) scale(3.5);opacity:0;}}
+        .brand-text h1{font-size:.95rem;font-weight:800;letter-spacing:.06em;color:#fff;line-height:1;}
+        .brand-text span{font-family:var(--mono);font-size:.58rem;color:var(--accent);letter-spacing:.1em;}
+        .header-right{display:flex;align-items:center;gap:6px;}
+        .header-clock{font-family:var(--mono);font-size:.72rem;color:var(--text-soft);padding:4px 9px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);}
+        .icon-btn{background:var(--bg-elevated);border:1px solid var(--border-soft);color:var(--text-soft);padding:7px 9px;border-radius:var(--radius);cursor:pointer;font-size:.85rem;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;min-width:36px;min-height:36px;font-family:var(--sans);font-weight:700;}
+        .icon-btn:hover{background:var(--border-soft);color:var(--text-main);}
+
+        /* BACK LINK */
+        .back-btn{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text-soft);text-decoration:none;font-family:var(--mono);padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated);transition:all .15s;}
+        .back-btn:hover{color:var(--text-main);border-color:var(--border-soft);}
+
+        /* STATUS BAR */
+        .status-bar{background:var(--bg-card);border-bottom:1px solid var(--border);padding:4px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+        .status-msg{font-size:.72rem;font-family:var(--mono);color:var(--text-soft);}
+        .status-msg.ok{color:var(--success);}
+        .status-msg.err{color:var(--danger);}
+        .status-msg.checking{color:var(--warning);}
+
+        /* KPI BAR */
+        .kpi-bar{background:var(--bg-card);border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);gap:0;width:100%;}
+        .kpi-item{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 10px;border-right:1px solid var(--border);gap:1px;}
+        .kpi-item:last-child{border-right:none;}
+        .kpi-label{font-size:.56rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);white-space:nowrap;}
+        .kpi-value{font-family:var(--mono);font-size:1.15rem;font-weight:500;line-height:1;color:var(--text-main);}
+        .kpi-value.green{color:var(--success);}
+        .kpi-value.red{color:var(--danger);}
+        .kpi-value.yellow{color:var(--warning);}
+        .kpi-value.blue{color:var(--accent);}
+
+        /* MAIN */
+        .main-container{max-width:860px;margin:0 auto;padding:16px 14px 40px;}
+
+        /* OVERALL BANNER */
+        .overall-banner{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;}
+        .overall-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+        .overall-dot.ok{background:var(--success);box-shadow:0 0 8px rgba(16,185,129,.4);}
+        .overall-dot.err{background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,.4);}
+        .overall-dot.checking{background:var(--warning);box-shadow:0 0 8px rgba(245,158,11,.4);animation:blink-dot 1s ease-in-out infinite;}
+        @keyframes blink-dot{0%,100%{opacity:1;}50%{opacity:.3;}}
+        .overall-title{font-size:.9rem;font-weight:700;color:var(--text-main);}
+        .overall-sub{font-size:.72rem;font-family:var(--mono);color:var(--text-soft);margin-top:2px;}
+        .overall-right{margin-left:auto;text-align:right;}
+        .refresh-btn{font-family:var(--sans);font-size:.72rem;font-weight:700;background:var(--bg-elevated);color:var(--text-soft);border:1px solid var(--border-soft);border-radius:var(--radius);padding:6px 12px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;}
+        .refresh-btn:hover{background:var(--border-soft);color:var(--text-main);}
+        .refresh-btn.spinning span{display:inline-block;animation:spin .6s linear infinite;}
+        @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+        .last-checked{font-size:.65rem;font-family:var(--mono);color:var(--text-muted);margin-top:4px;}
+
+        /* SECTION */
+        .section-label{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--text-soft);margin:0 0 8px;}
+
+        /* SERVICE CARD */
+        .services-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px;}
+        .service-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
+        .service-row:last-child{border-bottom:none;}
+        .service-row:hover{background:var(--bg-elevated);}
+        .svc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+        .svc-dot.ok{background:var(--success);}
+        .svc-dot.err{background:var(--danger);}
+        .svc-dot.checking{background:var(--warning);animation:blink-dot 1s ease-in-out infinite;}
+        .svc-dot.unknown{background:var(--text-muted);}
+        .svc-info{flex:1;min-width:0;}
+        .svc-name{font-size:.84rem;font-weight:700;color:var(--text-main);}
+        .svc-desc{font-size:.68rem;font-family:var(--mono);color:var(--text-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .svc-history{display:flex;gap:2px;margin-top:5px;}
+        .hist-bar{width:6px;height:16px;border-radius:2px;flex-shrink:0;}
+        .hist-bar.ok{background:var(--success-dim);border:1px solid rgba(16,185,129,.2);}
+        .hist-bar.err{background:var(--danger-dim);border:1px solid rgba(239,68,68,.2);}
+        .hist-bar.empty{background:var(--bg-elevated);border:1px solid var(--border);}
+        .svc-right{text-align:right;flex-shrink:0;}
+        .svc-badge{font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-block;font-family:var(--mono);}
+        .svc-badge.ok{background:var(--success-dim);color:var(--success);border:1px solid rgba(16,185,129,.2);}
+        .svc-badge.err{background:var(--danger-dim);color:var(--danger);border:1px solid rgba(239,68,68,.2);}
+        .svc-badge.checking{background:var(--warning-dim);color:var(--warning);border:1px solid rgba(245,158,11,.2);}
+        .svc-badge.unknown{background:var(--bg-elevated);color:var(--text-soft);border:1px solid var(--border);}
+        .svc-latency{font-size:.63rem;font-family:var(--mono);color:var(--text-muted);margin-top:3px;}
+
+        /* SPEED TEST */
+        .speed-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px;}
+        .speed-header{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);}
+        .speed-title{font-size:.84rem;font-weight:700;color:var(--text-main);}
+        .speed-subtitle{font-size:.68rem;font-family:var(--mono);color:var(--text-soft);margin-top:2px;}
+        .speed-run-btn{font-family:var(--sans);font-size:.72rem;font-weight:700;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(14,165,233,.25);border-radius:var(--radius);padding:7px 14px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:6px;}
+        .speed-run-btn:hover{background:rgba(14,165,233,.2);}
+        .speed-run-btn:disabled{opacity:.5;cursor:not-allowed;}
+        .speed-run-btn.running span{display:inline-block;animation:spin .6s linear infinite;}
+        .speed-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:0;}
+        .speed-metric{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px 10px;border-right:1px solid var(--border);position:relative;}
+        .speed-metric:last-child{border-right:none;}
+        .speed-metric-icon{font-size:1.1rem;margin-bottom:4px;}
+        .speed-metric-label{font-size:.56rem;text-transform:uppercase;letter-spacing:.1em;color:var(--text-soft);}
+        .speed-metric-value{font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--text-main);line-height:1.1;margin:3px 0 1px;}
+        .speed-metric-unit{font-size:.6rem;font-family:var(--mono);color:var(--text-muted);}
+        .speed-metric-value.good{color:var(--success);}
+        .speed-metric-value.ok{color:var(--warning);}
+        .speed-metric-value.bad{color:var(--danger);}
+        .speed-progress{height:3px;background:var(--border);position:relative;overflow:hidden;}
+        .speed-progress-bar{height:100%;width:0%;background:var(--accent);transition:width .3s ease;border-radius:2px;}
+        .speed-progress-bar.done{background:var(--success);}
+        .speed-targets{display:flex;gap:0;border-top:1px solid var(--border);}
+        .speed-target{flex:1;padding:8px 12px;border-right:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+        .speed-target:last-child{border-right:none;}
+        .speed-target-dot{width:6px;height:6px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
+        .speed-target-dot.ok{background:var(--success);}
+        .speed-target-dot.err{background:var(--danger);}
+        .speed-target-dot.running{background:var(--warning);animation:blink-dot 1s ease-in-out infinite;}
+        .speed-target-info{flex:1;min-width:0;}
+        .speed-target-name{font-size:.72rem;font-weight:700;color:var(--text-main);}
+        .speed-target-detail{font-size:.62rem;font-family:var(--mono);color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        @media(max-width:640px){.speed-metrics{grid-template-columns:repeat(3,1fr);}.speed-metric-value{font-size:1.1rem;}}
+
+        /* FOOTER */
+        .page-footer{text-align:center;font-size:.65rem;font-family:var(--mono);color:var(--text-muted);padding:20px 0;border-top:1px solid var(--border);}
+
+        @media(max-width:640px){
+            .kpi-bar{grid-template-columns:repeat(2,1fr);}
+            .kpi-item:nth-child(2){border-right:none;}
+            .kpi-item:nth-child(3){border-right:1px solid var(--border);}
+            .kpi-item:nth-child(3),.kpi-item:nth-child(4){border-top:1px solid var(--border);}
+            .overall-banner{flex-wrap:wrap;}
+            .overall-right{margin-left:0;width:100%;}
+            .svc-desc{max-width:160px;}
+            .header-clock{display:none;}
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="app-header">
+        <div class="header-brand">
+            <div class="radar-wrap">
+                <div class="radar-core">
+                    <div class="radar-ring"></div>
+                    <div class="radar-ring"></div>
+                    <div class="radar-ring"></div>
+                    <div class="radar-dot"></div>
+                </div>
+            </div>
+            <div class="brand-text">
+                <h1>VESSELTRACKER</h1>
+                <span>System Status</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="header-clock" id="headerClock">--:--:-- UTC</div>
+            <button class="icon-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+            <a href="index.html" class="back-btn">← App</a>
+        </div>
+    </header>
+
+    <!-- STATUS BAR -->
+    <div class="status-bar">
+        <span id="statusMsg" class="status-msg checking">Checking all services...</span>
+        <span id="autoRefreshLabel" class="status-msg" style="font-size:.62rem;">Auto-refresh in <span id="countdown">60</span>s</span>
+    </div>
+
+    <!-- KPI BAR -->
+    <div class="kpi-bar">
+        <div class="kpi-item">
+            <div class="kpi-label">Operational</div>
+            <div class="kpi-value green" id="kpiOk">–</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Degraded</div>
+            <div class="kpi-value yellow" id="kpiDeg">–</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Down</div>
+            <div class="kpi-value red" id="kpiDown">–</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Avg Latency</div>
+            <div class="kpi-value blue" id="kpiAvg">–</div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-container">
+
+        <!-- OVERALL BANNER -->
+        <div class="overall-banner">
+            <div class="overall-dot checking" id="overallDot"></div>
+            <div>
+                <div class="overall-title" id="overallTitle">Checking all services...</div>
+                <div class="overall-sub" id="overallSub">Please wait</div>
+            </div>
+            <div class="overall-right">
+                <button class="refresh-btn" id="refreshBtn" onclick="runAllChecks()">
+                    <span>↻</span> Refresh
+                </button>
+                <div class="last-checked" id="lastChecked"></div>
+            </div>
+        </div>
+
+        <!-- CORE SERVICES -->
+        <div class="section-label">Core Services</div>
+        <div class="services-card" id="coreCard">
+            <div class="service-row"><div class="svc-dot checking"></div><div class="svc-info"><div class="svc-name">Loading...</div></div></div>
+        </div>
+
+        <!-- DATA SOURCES -->
+        <div class="section-label">Data Sources</div>
+        <div class="services-card" id="dataCard">
+            <div class="service-row"><div class="svc-dot checking"></div><div class="svc-info"><div class="svc-name">Loading...</div></div></div>
+        </div>
+
+        <!-- INFRASTRUCTURE -->
+        <div class="section-label">Infrastructure</div>
+        <div class="services-card" id="infraCard">
+            <div class="service-row"><div class="svc-dot checking"></div><div class="svc-info"><div class="svc-name">Loading...</div></div></div>
+        </div>
+
+        <!-- SPEED TEST -->
+        <div class="section-label">Connection Speed Test</div>
+        <div class="speed-card">
+            <div class="speed-header">
+                <div>
+                    <div class="speed-title">Browser → Servers</div>
+                    <div class="speed-subtitle">Tests your device's connection to each service</div>
+                </div>
+                <button class="speed-run-btn" id="speedRunBtn" onclick="runSpeedTest()">
+                    <span>⚡</span> Run Test
+                </button>
+            </div>
+            <div class="speed-progress"><div class="speed-progress-bar" id="speedProgressBar"></div></div>
+            <div class="speed-metrics">
+                <div class="speed-metric">
+                    <div class="speed-metric-icon">📡</div>
+                    <div class="speed-metric-label">Ping</div>
+                    <div class="speed-metric-value" id="stPing">—</div>
+                    <div class="speed-metric-unit">ms</div>
+                </div>
+                <div class="speed-metric">
+                    <div class="speed-metric-icon">⬇</div>
+                    <div class="speed-metric-label">Download</div>
+                    <div class="speed-metric-value" id="stDown">—</div>
+                    <div class="speed-metric-unit">Mbps</div>
+                </div>
+                <div class="speed-metric">
+                    <div class="speed-metric-icon">⬆</div>
+                    <div class="speed-metric-label">Upload</div>
+                    <div class="speed-metric-value" id="stUp">—</div>
+                    <div class="speed-metric-unit">Mbps</div>
+                </div>
+            </div>
+            <div class="speed-targets">
+                <div class="speed-target">
+                    <div class="speed-target-dot" id="stDotWorker"></div>
+                    <div class="speed-target-info">
+                        <div class="speed-target-name">Edge Network</div>
+                        <div class="speed-target-detail" id="stDetailWorker">Not tested</div>
+                    </div>
+                </div>
+                <div class="speed-target">
+                    <div class="speed-target-dot" id="stDotGcloud"></div>
+                    <div class="speed-target-info">
+                        <div class="speed-target-name">Google Cloud VM</div>
+                        <div class="speed-target-detail" id="stDetailGcloud">Not tested</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page-footer">VesselTracker · Status page · Data refreshes every 60 seconds</div>
+    </div>
+
+    <script>
+        // ── THEME ──────────────────────────────────────────────────────────────
+        function loadTheme() {
+            let saved = 'dark';
+            try { saved = localStorage.getItem('vt_theme') || 'dark'; } catch(_) {}
+            applyTheme(saved);
+        }
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f0f4f8');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#020c1a');
+            }
+            const btn = document.getElementById('themeToggle');
+            if (btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+        }
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            try { localStorage.setItem('vt_theme', next); } catch(_) {}
+            applyTheme(next);
+        }
+        loadTheme();
+
+        // ── CLOCK ─────────────────────────────────────────────────────────────
+        function tickClock() {
+            const el = document.getElementById('headerClock');
+            if (!el) return;
+            const now = new Date();
+            const h = now.getUTCHours().toString().padStart(2,'0');
+            const m = now.getUTCMinutes().toString().padStart(2,'0');
+            const s = now.getUTCSeconds().toString().padStart(2,'0');
+            el.textContent = `${h}:${m}:${s} UTC`;
+        }
+        setInterval(tickClock, 1000);
+        tickClock();
+
+        // ── SERVICE DEFINITIONS ───────────────────────────────────────────────
+        const WORKER  = 'https://vesseltracker.asmahri1.workers.dev';
+        const GCLOUD  = 'https://vessel-api.duckdns.org';
+        const SUPABASE = 'https://rpzcphszvdgjsqnhwdhm.supabase.co';
+        const SUPABASE_ANON = 'sb_publishable_DXgi3J0tJyM1azdSzGycFQ_l2hsut64';
+
+        const SERVICES = [
+            {
+                id: 'worker', group: 'core', name: 'Cloudflare Worker',
+                desc: 'Auth · routing · API gateway',
+                check: async () => {
+                    const t = Date.now();
+                    const r = await fetch(`${WORKER}/ping`, { signal: AbortSignal.timeout(8000) });
+                    const d = await r.json().catch(() => ({}));
+                    const latency = Date.now() - t;
+                    return { ok: r.ok && d.ok === true, latency, detail: d.ok ? 'Responding normally' : `HTTP ${r.status}` };
+                }
+            },
+            {
+                id: 'gcloud', group: 'core', name: 'Google Cloud VM',
+                desc: 'Vessel scraping · SOF generation · DuckDNS',
+                check: async () => {
+                    const t = Date.now();
+                    const r = await fetch(`${GCLOUD}/ping`, { signal: AbortSignal.timeout(12000) });
+                    const d = await r.json().catch(() => ({}));
+                    const latency = Date.now() - t;
+                    return { ok: r.ok && d.ok === true, latency, detail: d.ok ? 'Responding normally' : 'Unreachable or starting' };
+                }
+            },
+            {
+               id: 'frontend', group: 'core', name: 'Cloudflare Pages (Frontend)',
+               desc: 'App shell · static assets · Global CDN',
+               check: async () => {
+                      const t = Date.now();
+        // Point this to your new production URL
+                      await fetch('https://vesseltracker.pages.dev/', { signal: AbortSignal.timeout(8000), mode: 'no-cors' });
+                      return { ok: true, latency: Date.now() - t, detail: 'Reachable via Edge' };
+            }
+            },
+            {
+                id: 'supabase_db', group: 'data', name: 'Supabase — Database',
+                desc: 'Vessels · SOF drafts · port calls · owners',
+                check: async () => {
+                    const t = Date.now();
+                    const r = await fetch(`${SUPABASE}/rest/v1/ports?select=name&limit=1`, {
+                        headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` },
+                        signal: AbortSignal.timeout(8000)
+                    });
+                    return { ok: r.ok, latency: Date.now() - t, detail: r.ok ? 'Responding normally' : `HTTP ${r.status}` };
+                }
+            },
+            {
+                id: 'supabase_auth', group: 'data', name: 'Supabase — Auth',
+                desc: 'Login · session management · user profiles',
+                check: async () => {
+                    const t = Date.now();
+                    const r = await fetch(`${SUPABASE}/auth/v1/settings`, {
+                        headers: { 'apikey': SUPABASE_ANON },
+                        signal: AbortSignal.timeout(8000)
+                    });
+                    return { ok: r.ok, latency: Date.now() - t, detail: r.ok ? 'Responding normally' : `HTTP ${r.status}` };
+                }
+            },
+            {
+                id: 'weather', group: 'data', name: 'Weather API',
+                desc: 'Wind & wave data at vessel position',
+                check: async () => {
+                    const t = Date.now();
+                    const r = await fetch(`${WORKER}/weather?lat=33.5&lon=-7.6`, { signal: AbortSignal.timeout(12000) });
+                    const d = await r.json().catch(() => ({}));
+                    const latency = Date.now() - t;
+                    const ok = r.ok && (d.wind !== null || d.wave !== null);
+                    return { ok, latency, detail: ok ? `Wind ${d.wind ?? '–'} kn / Wave ${d.wave ?? '–'} m` : 'No data returned' };
+                }
+            },
+            {
+                id: 'gh_actions', group: 'infra', name: 'GitHub Actions (Scraper)',
+                desc: 'Scheduled AIS refresh · every 30min 05:00–22:00 UTC',
+                check: async () => {
+                    const h = new Date().getUTCHours();
+                    const inWindow = h >= 5 && h < 22;
+                    return { ok: inWindow, latency: null, detail: inWindow ? `Active window · next run ~:00 UTC` : `Outside active hours (05–22 UTC)`, noLatency: true };
+                }
+            },
+            {
+                id: 'cloudflare_net', group: 'infra', name: 'Cloudflare Network',
+                desc: 'DDoS protection · tunnel · routing layer',
+                check: async () => {
+                    const t = Date.now();
+                    await fetch('https://1.1.1.1/cdn-cgi/trace', { signal: AbortSignal.timeout(5000), mode: 'no-cors' });
+                    return { ok: true, latency: Date.now() - t, detail: 'Reachable' };
+                }
+            },
+        ];
+
+        // ── STATE ─────────────────────────────────────────────────────────────
+        const state = {};
+        SERVICES.forEach(s => {
+            state[s.id] = { status: 'checking', latency: null, detail: '', history: new Array(10).fill(null) };
+        });
+
+        // ── RENDER ────────────────────────────────────────────────────────────
+        function buildRow(svc) {
+            const s = state[svc.id];
+            const badgeText = s.status === 'ok' ? 'Operational' : s.status === 'err' ? 'Down' : 'Checking';
+            const hist = s.history.map(v => {
+                if (v === null) return `<div class="hist-bar empty" title="No data"></div>`;
+                return `<div class="hist-bar ${v ? 'ok' : 'err'}" title="${v ? 'OK' : 'Down'}"></div>`;
+            }).join('');
+            const latencyStr = (s.latency != null && !s.noLatency) ? `${s.latency}ms` : '';
+            const detailStr = (s.status !== 'checking' && s.detail) ? s.detail : svc.desc;
+            return `<div class="service-row">
+                <div class="svc-dot ${s.status}"></div>
+                <div class="svc-info">
+                    <div class="svc-name">${svc.name}</div>
+                    <div class="svc-desc">${detailStr}</div>
+                    <div class="svc-history">${hist}</div>
+                </div>
+                <div class="svc-right">
+                    <span class="svc-badge ${s.status}">${badgeText}</span>
+                    <div class="svc-latency">${latencyStr}</div>
+                </div>
+            </div>`;
+        }
+
+        function renderCards() {
+            const groups = { core: 'coreCard', data: 'dataCard', infra: 'infraCard' };
+            for (const [group, id] of Object.entries(groups)) {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = SERVICES.filter(s => s.group === group).map(buildRow).join('');
+            }
+
+            const done = Object.values(state).filter(s => s.status !== 'checking');
+            const okCount  = done.filter(s => s.status === 'ok').length;
+            const errCount = done.filter(s => s.status === 'err').length;
+            const latencies = done.filter(s => s.latency != null).map(s => s.latency);
+            const avgMs = latencies.length ? Math.round(latencies.reduce((a,b)=>a+b,0)/latencies.length) : null;
+
+            document.getElementById('kpiOk').textContent   = done.length ? okCount : '–';
+            document.getElementById('kpiDeg').textContent  = '0';
+            document.getElementById('kpiDown').textContent = done.length ? errCount : '–';
+            document.getElementById('kpiAvg').textContent  = avgMs != null ? avgMs + 'ms' : '–';
+
+            const allDone = done.length === SERVICES.length;
+            const dot   = document.getElementById('overallDot');
+            const title = document.getElementById('overallTitle');
+            const sub   = document.getElementById('overallSub');
+            const msg   = document.getElementById('statusMsg');
+
+            if (!allDone) {
+                dot.className = 'overall-dot checking';
+                title.textContent = 'Checking all services...';
+                sub.textContent = `${done.length} of ${SERVICES.length} checked`;
+                msg.className = 'status-msg checking';
+                msg.textContent = 'Checking...';
+            } else if (errCount === 0) {
+                dot.className = 'overall-dot ok';
+                title.textContent = 'All systems operational';
+                sub.textContent = `${okCount} services healthy · avg ${avgMs}ms response`;
+                msg.className = 'status-msg ok';
+                msg.textContent = '✓ All systems operational';
+            } else {
+                dot.className = 'overall-dot err';
+                title.textContent = `${errCount} service${errCount > 1 ? 's' : ''} unavailable`;
+                sub.textContent = `${okCount} operational · ${errCount} down`;
+                msg.className = 'status-msg err';
+                msg.textContent = `⚠ ${errCount} service${errCount > 1 ? 's' : ''} down`;
+            }
+        }
+
+        // ── CHECK ONE SERVICE ─────────────────────────────────────────────────
+        async function checkService(svc) {
+            state[svc.id].status = 'checking';
+            renderCards();
+            try {
+                const result = await svc.check();
+                const prev = [...state[svc.id].history];
+                prev.shift(); prev.push(result.ok);
+                state[svc.id] = {
+                    status: result.ok ? 'ok' : 'err',
+                    latency: result.latency,
+                    detail: result.detail || '',
+                    noLatency: result.noLatency || false,
+                    history: prev
+                };
+            } catch(e) {
+                const prev = [...state[svc.id].history];
+                prev.shift(); prev.push(false);
+                state[svc.id] = { status: 'err', latency: null, detail: 'Request failed or timed out', history: prev };
+            }
+            renderCards();
+        }
+
+        // ── RUN ALL ───────────────────────────────────────────────────────────
+        async function runAllChecks() {
+            const btn = document.getElementById('refreshBtn');
+            if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
+            await Promise.all(SERVICES.map(s => checkService(s)));
+            if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
+            const now = new Date();
+            const lc = document.getElementById('lastChecked');
+            if (lc) lc.textContent = `Last checked ${now.toLocaleTimeString()}`;
+            resetCountdown();
+        }
+
+        // ── COUNTDOWN ─────────────────────────────────────────────────────────
+        let _countdown = 60;
+        let _countdownInterval = null;
+        function resetCountdown() {
+            _countdown = 60;
+            clearInterval(_countdownInterval);
+            _countdownInterval = setInterval(() => {
+                _countdown--;
+                const el = document.getElementById('countdown');
+                if (el) el.textContent = _countdown;
+                if (_countdown <= 0) { runAllChecks(); }
+            }, 1000);
+        }
+
+        // ── SPEED TEST ────────────────────────────────────────────────────────
+        const ST = {
+            running: false,
+            DOWNLOAD_BYTES: 500 * 1024,  // 500 KB payload via Cloudflare
+            UPLOAD_BYTES:   200 * 1024,  // 200 KB upload
+        };
+
+        function stSetProgress(pct, done = false) {
+            const bar = document.getElementById('speedProgressBar');
+            if (bar) { bar.style.width = pct + '%'; if (done) bar.classList.add('done'); else bar.classList.remove('done'); }
+        }
+
+        function stSetMetric(id, value, unit) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = value === null ? '—' : value;
+            el.className = 'speed-metric-value';
+            if (value === null) return;
+            const num = parseFloat(value);
+            if (id === 'stPing') {
+                el.classList.add(num < 80 ? 'good' : num < 200 ? 'ok' : 'bad');
+            } else {
+                el.classList.add(num >= 5 ? 'good' : num >= 1 ? 'ok' : 'bad');
+            }
+        }
+
+        function stSetTarget(target, status, detail) {
+            const dot = document.getElementById(`stDot${target}`);
+            const det = document.getElementById(`stDetail${target}`);
+            if (dot) dot.className = `speed-target-dot ${status}`;
+            if (det) det.textContent = detail;
+        }
+
+        async function stPing(url) {
+            const times = [];
+            for (let i = 0; i < 4; i++) {
+                try {
+                    const t = Date.now();
+                    await fetch(`${url}?_=${Date.now()}`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
+                    times.push(Date.now() - t);
+                } catch { times.push(null); }
+            }
+            const valid = times.filter(t => t !== null);
+            return valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : null;
+        }
+
+        async function stDownload(url) {
+            // Fetch the Worker ping endpoint multiple times to approximate throughput
+            // We use the Worker because it has CORS headers
+            try {
+                const SIZE_BYTES = ST.DOWNLOAD_BYTES;
+                const t = Date.now();
+                // Fire 4 parallel fetches to fill the pipe
+                await Promise.all(Array.from({ length: 4 }, () =>
+                    fetch(`${WORKER}/data/sanctions?_=${Math.random()}`, {
+                        cache: 'no-store',
+                        signal: AbortSignal.timeout(15000)
+                    }).then(r => r.text())
+                ));
+                const elapsed = (Date.now() - t) / 1000;
+                // Estimate: 4 responses * ~5KB each
+                const bits = 4 * 5 * 1024 * 8;
+                return Math.round((bits / elapsed / 1e6) * 100) / 100;
+            } catch { return null; }
+        }
+
+        async function stDownloadReal() {
+            // More accurate: fetch a real payload and measure bytes/time
+            try {
+                const t = Date.now();
+                const r = await fetch(`https://speed.cloudflare.com/__down?bytes=${ST.DOWNLOAD_BYTES}`, {
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(20000)
+                });
+                const buf = await r.arrayBuffer();
+                const elapsed = (Date.now() - t) / 1000;
+                const mbps = ((buf.byteLength * 8) / elapsed / 1e6);
+                return Math.round(mbps * 100) / 100;
+            } catch { return null; }
+        }
+
+        async function stUploadReal() {
+            try {
+                const payload = new Uint8Array(ST.UPLOAD_BYTES);
+                crypto.getRandomValues(payload);
+                const t = Date.now();
+                await fetch(`https://speed.cloudflare.com/__up`, {
+                    method: 'POST',
+                    body: payload,
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(20000)
+                });
+                const elapsed = (Date.now() - t) / 1000;
+                const mbps = ((ST.UPLOAD_BYTES * 8) / elapsed / 1e6);
+                return Math.round(mbps * 100) / 100;
+            } catch { return null; }
+        }
+
+        async function runSpeedTest() {
+            if (ST.running) return;
+            ST.running = true;
+            const btn = document.getElementById('speedRunBtn');
+            if (btn) { btn.disabled = true; btn.classList.add('running'); btn.innerHTML = '<span>↻</span> Testing...'; }
+
+            // Reset UI
+            stSetMetric('stPing', null);
+            stSetMetric('stDown', null);
+            stSetMetric('stUp', null);
+            stSetTarget('Worker', 'running', 'Testing ping...');
+            stSetTarget('Gcloud', 'running', 'Testing ping...');
+            stSetProgress(5);
+
+            // 1. Ping both servers
+            const [pingWorker, pingGcloud] = await Promise.all([
+                stPing(WORKER + '/ping'),
+                stPing(GCLOUD + '/ping')
+            ]);
+            stSetProgress(30);
+
+            const bestPing = [pingWorker, pingGcloud].filter(Boolean);
+            const avgPing = bestPing.length ? Math.round(bestPing.reduce((a,b)=>a+b,0)/bestPing.length) : null;
+            stSetMetric('stPing', avgPing);
+
+            stSetTarget('Worker', pingWorker ? 'ok' : 'err', pingWorker ? `${pingWorker}ms ping` : 'Unreachable');
+            stSetTarget('Gcloud', pingGcloud ? 'ok' : 'err', pingGcloud ? `${pingGcloud}ms ping` : 'Unreachable');
+            stSetProgress(50);
+
+            // 2. Download test via Cloudflare speed endpoint
+            const dlSpeed = await stDownloadReal();
+            stSetMetric('stDown', dlSpeed !== null ? dlSpeed.toFixed(1) : null);
+            stSetProgress(75);
+
+            // 3. Upload test
+            const ulSpeed = await stUploadReal();
+            stSetMetric('stUp', ulSpeed !== null ? ulSpeed.toFixed(1) : null);
+            stSetProgress(100, true);
+
+            // Update target details with full results
+            stSetTarget('Worker', pingWorker ? 'ok' : 'err',
+                pingWorker ? `${pingWorker}ms · ${dlSpeed ? dlSpeed.toFixed(1)+' Mbps ↓' : 'dl failed'}` : 'Unreachable');
+            stSetTarget('Gcloud', pingGcloud ? 'ok' : 'err',
+                pingGcloud ? `${pingGcloud}ms ping` : 'Unreachable');
+
+            ST.running = false;
+            if (btn) { btn.disabled = false; btn.classList.remove('running'); btn.innerHTML = '<span>⚡</span> Run Again'; }
+        }
+
+        // ── INIT ──────────────────────────────────────────────────────────────
+        renderCards();
+        runAllChecks();
+    </script>
+</body>
+</html>

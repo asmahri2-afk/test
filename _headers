@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════
+# VesselTracker — Cloudflare Pages _headers
+# ═══════════════════════════════════════════════════════════
+
+# ── Security headers on every page ──────────────────────────
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://flagcdn.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; connect-src 'self' https://cdn.jsdelivr.net https://rpzcphszvdgjsqnhwdhm.supabase.co wss://rpzcphszvdgjsqnhwdhm.supabase.co https://vesseltracker.asmahri1.workers.dev https://vessel-api.duckdns.org https://speed.cloudflare.com https://cloudflareinsights.com https://1.1.1.1 https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';
+
+# ── status.html: hide from search engines (leaks infra) ─────
+/status.html
+  X-Robots-Tag: noindex, nofollow
+
+# ── Immutable cache for versioned static assets ─────────────
+# These files use ?v= query strings for cache-busting.
+# Browser + CDN cache for 1 year, never revalidate.
+/css/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.jpg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+# ── Short cache for files that change on deploy ──────────────
+/*.json
+  Cache-Control: public, max-age=3600
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/manifest.json
+  Cache-Control: public, max-age=86400
