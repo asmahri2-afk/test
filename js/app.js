@@ -2117,7 +2117,7 @@ window._dosLazy = function(imo) {
     if (window.openDossier) { window.openDossier(imo); return; }
     // First click: load dossier.js then open
     const s = document.createElement('script');
-    s.src = 'js/dossier.js?v=1';
+    s.src = 'js/dossier.js?v=2';
     s.onload = () => window.openDossier(imo);
     s.onerror = () => window.showToast('Erreur chargement Dossier', 'danger');
     document.head.appendChild(s);
@@ -2128,7 +2128,7 @@ window._dosLazy = function(imo) {
 function _dosEagerLoad(thenCall) {
     if (window.openDossier) { if (thenCall) thenCall(); return; }
     const s = document.createElement('script');
-    s.src = 'js/dossier.js?v=1';
+    s.src = 'js/dossier.js?v=2';
     s.onload = () => { if (thenCall) thenCall(); };
     document.head.appendChild(s);
 }
