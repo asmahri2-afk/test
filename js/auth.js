@@ -319,6 +319,7 @@ window.testCallMeBot = async function() {
 
 // Settings panel
 window.openSettingsPanel = function() {
+    if (window.pushRenderSettings) window.pushRenderSettings();
     const panel = document.getElementById('settingsPanel');
     const overlay = document.getElementById('settingsPanelOverlay');
     if (panel) panel.style.transform = 'translateX(0)';
@@ -426,6 +427,15 @@ window.injectSettingsPanel = function() {
                 </div>
             </div>
         </div>
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+    <div data-i18n="pushTitle" style="font-weight:600;font-size:.88rem;color:var(--text-main);margin-bottom:8px;">🔔 Push Notifications</div>
+    <div style="font-size:.76rem;color:var(--text-soft);background:var(--bg-elevated);border-radius:10px;padding:10px 12px;margin-bottom:12px;line-height:1.5;">
+        <span data-i18n="pushDescription">Get instant alerts on this device — works even when logged out.</span>
+    </div>
+    <div id="pushSettingsContent">
+        <div style="color:var(--text-soft);font-size:.78rem;">Loading...</div>
+    </div>
+</div>
         <div id="adminSection" style="display:none;padding:0 20px 16px;border-top:1px solid var(--border);margin-top:4px;">
             <div style="font-weight:600;font-size:.88rem;color:var(--accent);margin:14px 0 10px;">🛡 Admin Dashboard</div>
             <div id="adminContent" style="font-size:.78rem;color:var(--text-soft);">Loading...</div>
