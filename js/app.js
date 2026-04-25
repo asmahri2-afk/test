@@ -2085,7 +2085,7 @@ window.init = function() {
     window.S.refreshInterval = setInterval(() => { window.loadData(); window.checkApiStatus(); }, window.CONFIG.REFRESH_INTERVAL);
 
     if (window.S.currentUser?.access_token) {
-        window.startRealtimeHandoffListener();
+        if (window.startRealtimeHandoffListener) window.startRealtimeHandoffListener();
         if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
         if (window.injectHandoffBadge) window.injectHandoffBadge();
         window._handoffShownOnLogin = false;

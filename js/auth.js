@@ -29,6 +29,11 @@ window.toggleTheme = function() {
 // Map
 window.initMap = function() {
     if (window.S?.mapInitialized) return;
+    if (typeof L === 'undefined') {
+        // Leaflet not yet loaded — retry after a short delay
+        setTimeout(window.initMap, 200);
+        return;
+    }
     const mapEl = document.getElementById('map');
     if (!mapEl) return;
     window.S.mapInstance = L.map('map', { center: [25, -15], zoom: 5 });
