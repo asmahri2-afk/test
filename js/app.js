@@ -2092,7 +2092,6 @@ window.init = function() {
         window._dosShownOnLogin = false;
         if (window.startHandoffPolling) window.startHandoffPolling();
         if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
-        if (window.pushAutoResubscribe) window.pushAutoResubscribe();
     }
 };
 
