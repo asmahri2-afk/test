@@ -31,35 +31,15 @@ window.initMap = function() {
     if (window.S?.mapInitialized) return;
     const mapEl = document.getElementById('map');
     if (!mapEl) return;
-
-    const _doInit = () => {
-        window.S.mapInstance = L.map('map', { center: [25, -15], zoom: 5 });
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
-        }).addTo(window.S.mapInstance);
-        window.S.mapInitialized = true;
-        window.updateMapMarkers();
-        // invalidateSize here — called after map is actually ready
-        setTimeout(() => window.S.mapInstance?.invalidateSize(), 50);
-    };
-
-    if (typeof L !== 'undefined') { _doInit(); return; }
-
-    // Lazy-load Leaflet only when map tab is first opened (~175KB saved on initial load)
-    if (!document.querySelector('link[href*="leaflet"]')) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css';
-        document.head.appendChild(link);
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
-    script.onload = _doInit;
-    script.onerror = () => console.error('[Map] Failed to load Leaflet JS');
-    document.head.appendChild(script);
+    window.S.mapInstance = L.map('map', { center: [25, -15], zoom: 5 });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
+    }).addTo(window.S.mapInstance);
+    window.S.mapInitialized = true;
+    window.updateMapMarkers();
 };
 window.updateMapMarkers = function() {
-    if (!window.S?.mapInitialized || typeof L === 'undefined') return;
+    if (!window.S?.mapInitialized) return;
     window.S.mapMarkers?.forEach(m => m.remove());
     window.S.mapMarkers = [];
     const colors = { UNDERWAY: '#10b981', 'AT PORT': '#0ea5e9', 'AT ANCHOR': '#f59e0b', STALLED: '#ef4444', 'DATA PENDING': '#4e6a84' };
@@ -86,7 +66,8 @@ window.updateMapMarkers = function() {
 // Session & Auth
 window.saveSession = function(user) {
     const expires = new Date(Date.now() + 30 * 24 * 3600000).toUTCString();
-    document.cookie = `vt_session=${encodeURIComponent(JSON.stringify(user))}; expires=${expires}; path=/; SameSite=Strict; Secure`;
+    const _secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `vt_session=${encodeURIComponent(JSON.stringify(user))}; expires=${expires}; path=/; SameSite=Strict${_secure}`;
     window.S.currentUser = user;
 };
 window.loadSession = function() {
@@ -103,7 +84,8 @@ window.loadSession = function() {
     return null;
 };
 window.clearSession = function() {
-    document.cookie = 'vt_session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict; Secure';
+    const _secureClr = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `vt_session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict${_secureClr}`;
     window.S.currentUser = null;
     window.S.fleetMode = 'public';
 };
@@ -130,33 +112,23 @@ window.login = async function(username, pin) {
     if (!res.ok) throw new Error(data.error || 'Login failed');
     window.saveSession({ username: data.username, access_token: data.access_token, user_id: data.user_id });
     window.S.fleetMode = 'personal';
-    if (!window.openDossier) {
-    const script = document.createElement('script');
-    script.src = 'js/dossier.js?v=1';   // update version if needed
-    script.onload = () => {
-        // Now the real functions from dossier.js exist
-        if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
-        if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
-    };
-    script.onerror = () => console.error('[Dossier] Failed to load dossier.js');
-    document.head.appendChild(script);
-} else {
-    // dossier.js already loaded (shouldn't happen on first login, but safe)
-    if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
-    if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
-}
     window.updateAuthIcon();
     window.startRealtimeHandoffListener();
-    if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();  // dossier
     window.closeAuthModal();
     if (window.innerWidth >= 641 && window.el.addCard) window.el.addCard.classList.remove('hidden');
     window.loadData();
     window.loadUserProfile();
     window.injectHandoffBadge();
     window._handoffShownOnLogin = false;
-    window._dosShownOnLogin = false;    // dossier
+    window._dosShownOnLogin = false;
     window.startHandoffPolling();
-    if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();  // dossier
+    // Single eager load — starts both realtime listener and polling once dossier.js loads
+    if (window._dosEagerLoad) {
+        window._dosEagerLoad(() => {
+            if (window.startDossierRealtimeListener) window.startDossierRealtimeListener();
+            if (window.startDossierHandoffPolling) window.startDossierHandoffPolling();
+        });
+    }
     return data;
 };
 window.logout = function() {
@@ -167,9 +139,9 @@ window.logout = function() {
     if (window.el.addCard) window.el.addCard.classList.add('hidden');
     window.loadData();
     window.stopHandoffPolling();
-    if (window.stopDossierHandoffPolling) window.stopDossierHandoffPolling();  // dossier
+    if (window.stopDossierHandoffPolling) window.stopDossierHandoffPolling();
     window.updateHandoffBadge(0);
-    window.S.pendingDossierCount = 0;    // dossier
+    window.S.pendingDossierCount = 0;
     window.updateAlertBadge();
 };
 window.deleteAccount = async function() {
@@ -380,10 +352,9 @@ window.showToast = function(message, type = 'info', duration = 4000) {
     setTimeout(() => toast.remove(), duration);
 };
 
-// Handoff polling stubs — real implementations in sof.js/dossier.js override these
+// Handoff polling (stubs – actual implementation in app.js)
 window.startHandoffPolling = function() {};
 window.stopHandoffPolling = function() {};
-window.startRealtimeHandoffListener = function() {};
 window.updateHandoffBadge = function(count) { window.S.pendingHandoffCount = count || 0; window.updateAlertBadge(); };
 window.injectHandoffBadge = function() {};
 
@@ -403,7 +374,7 @@ window.injectAuthModal = function() {
                     <input id="authEmail" type="email" placeholder="your.name@cma-cgm.com" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-main);font-size:.9rem;outline:none;width:100%;box-sizing:border-box;" autocomplete="email" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')submitAuth()">
                     <div style="font-size:.7rem;color:var(--text-soft);margin-top:4px;padding-left:2px;">Company email required (@cma-cgm.com)</div>
                 </div>
-                <input id="authPin" type="password" maxlength="6" placeholder="PIN (4–6 digits)" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-main);font-size:.9rem;outline:none;width:100%;box-sizing:border-box;letter-spacing:4px;" inputmode="numeric" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')submitAuth()">
+                <input id="authPin" type="password" maxlength="6" placeholder="PIN (4–6 digits)" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-main);font-size:.9rem;outline:none;width:100%;box-sizing:border-box;letter-spacing:4px;" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()">
                 <div id="authError" style="color:var(--danger);font-size:.78rem;min-height:18px;"></div>
                 <button id="authSubmitBtn" onclick="submitAuth()" class="btn-primary" style="width:100%;padding:11px;font-size:.9rem;border-radius:8px;">Login</button>
             </div>

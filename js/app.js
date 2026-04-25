@@ -874,6 +874,8 @@ window.removeIMO = function(imo) {
 window.removeIMOConfirmed = async function(imo) {
     window.showLoading(i18n.get('removingImo').replace('{imo}', imo));
     const vname = window.S.vesselsDataMap.get(imo)?.name || window.S.staticCache.get(imo)?.name || `IMO ${imo}`;
+    // Clean up note timer to prevent memory leak
+    if (window.S.noteTimers[imo]) { clearTimeout(window.S.noteTimers[imo]); delete window.S.noteTimers[imo]; }
     await window.updateTrackedImos(imo, false);
     window.pushAlert('removed', imo, vname, i18n.get('alertRemovedFull').replace('{name}', vname).replace('{imo}', imo));
     window.hideLoading();
@@ -951,20 +953,17 @@ window.updateTrackedImos = async function(imo, isAdd, apiData = null) {
             window.updateStatus(i18n.get('removedImo').replace('{imo}', imo), 'success');
         }
         
-        window.S.isApiBusy = false;
-        if (window.el.refreshButton) window.el.refreshButton.disabled = false;
-        
         await window.loadData();
-        
+
     } catch (err) {
         console.error('updateTrackedImos error:', err);
         window.updateStatus(i18n.get('failed').replace('{msg}', err.message), 'error');
         window.saveToLocalStorage();
         window.renderVessels(window.S.trackedImosCache);
+    } finally {
+        window.S.isApiBusy = false;
+        if (window.el.refreshButton) window.el.refreshButton.disabled = false;
     }
-    
-    window.S.isApiBusy = false;
-    if (window.el.refreshButton) window.el.refreshButton.disabled = false;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
