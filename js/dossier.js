@@ -232,8 +232,8 @@ window.openDossier = function(imo) {
         <span id="dos-msg" style="font-size:.72rem;color:var(--success);flex:1;"></span>
         <button onclick="window._dosSend('${imo}')"   class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;">📤</button>
         <button onclick="window._dosClear('${imo}')"  class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;color:var(--danger);border-color:rgba(239,68,68,.3);">🗑</button>
-        <button onclick="window._dosSaveDraft('${imo}')" class="btn-ghost" style="padding:8px 14px;font-size:.78rem;">💾 Save</button>
-        <button onclick="window._dosGenerate('${imo}')" class="btn-primary" id="dos-gen-btn" style="padding:8px 14px;font-size:.78rem;">📥 Download</button>
+        <button onclick="window._dosSaveDraft('${imo}')" class="btn-ghost" style="padding:8px 14px;font-size:.78rem;" title="Sauvegarder">💾</button>
+        <button onclick="window._dosGenerate('${imo}')" class="btn-primary" id="dos-gen-btn" style="padding:8px 14px;font-size:.78rem;" title="Télécharger ZIP">📥</button>
     </div>`;
 
     document.body.appendChild(ov);
@@ -450,16 +450,22 @@ window._dosSend=async function(imo){
     if(!window.S?.currentUser?.access_token){window.showToast('Connexion requise','danger');return;}
     _q('dosSendModal')?.remove();
     const pop=document.createElement('div');pop.id='dosSendModal';
-    pop.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    pop.style.cssText='position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
     pop.innerHTML=`
-        <div style="background:var(--bg-card);border-radius:14px;padding:20px;max-width:380px;width:100%;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.4);">
-            <div style="font-weight:700;font-size:.95rem;color:var(--text-main);margin-bottom:14px;">📤 Envoyer Dossier</div>
-            <div id="dos-send-list" style="max-height:240px;overflow-y:auto;margin-bottom:10px;"><div style="color:var(--text-soft);font-size:.8rem;">Chargement...</div></div>
-            <textarea id="dos-send-notes" class="di" rows="2" placeholder="Notes (optionnel)..." style="margin-bottom:10px;"></textarea>
-            <div id="dos-send-msg" style="font-size:.72rem;min-height:18px;margin-bottom:8px;"></div>
-            <div style="display:flex;justify-content:flex-end;">
-                <button onclick="document.getElementById('dosSendModal')?.remove()" class="btn-ghost" style="padding:8px 14px;font-size:.78rem;">Annuler</button>
+        <div style="background:var(--bg-card);border-radius:14px;padding:20px;max-width:360px;width:100%;border:1px solid var(--border);">
+            <div style="font-weight:700;font-size:.95rem;margin-bottom:14px;color:var(--text-main);">📤 Envoyer Dossier</div>
+            <div id="dos-send-list" style="margin-bottom:12px;">
+                <div style="font-size:.78rem;color:var(--text-soft);">Chargement...</div>
             </div>
+            <div style="margin-bottom:10px;">
+                <label style="font-size:.72rem;color:var(--text-soft);">Notes</label>
+                <input id="dos-send-notes" type="text" placeholder="ex. Compléter section port..." class="di" style="margin-top:4px;">
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="document.getElementById('dosSendModal')?.remove()" class="btn-ghost" style="flex:1;padding:8px;font-size:.78rem;">Annuler</button>
+                <button onclick="window._dosDoSendSelected('${imo}')" class="btn-primary" style="flex:1;padding:8px;font-size:.78rem;" id="dos-send-btn">Envoyer</button>
+            </div>
+            <div id="dos-send-msg" style="font-size:.72rem;min-height:14px;margin-top:6px;text-align:center;"></div>
         </div>`;
     document.body.appendChild(pop);
     pop.addEventListener('click',e=>{if(e.target===pop)pop.remove();});
@@ -470,14 +476,29 @@ window._dosSend=async function(imo){
         const data=await r.json();
         const users=data.users||[];
         const el=_q('dos-send-list');if(!el)return;
-        if(!users.length){el.innerHTML='<div style="color:var(--text-soft);font-size:.8rem;">Aucun collègue.</div>';return;}
-        el.innerHTML=users.map(u=>`
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;border:1px solid var(--border);margin-bottom:6px;background:var(--bg-elevated);">
-                <span style="font-size:.85rem;color:var(--text-main);">👤 ${window.escapeHtml(u.username)}</span>
-                <button class="btn-ghost" style="padding:4px 10px;font-size:.72rem;"
-                    onclick="window._dosDoSend('${imo}','${u.id}','${window.escapeHtml(u.username)}')">Envoyer →</button>
-            </div>`).join('');
-    }catch(e){const el=_q('dos-send-list');if(el)el.innerHTML=`<div style="color:var(--danger);font-size:.8rem;">${e.message}</div>`;}
+        if(!users.length){
+            el.innerHTML='<div style="font-size:.78rem;color:var(--text-soft);">Aucun collègue disponible.</div>';
+            return;
+        }
+        el.innerHTML=`
+            <label style="font-size:.72rem;color:var(--text-soft);">Destinataire</label>
+            <select id="dos-send-target" class="di" style="margin-top:4px;">
+                <option value="">— Sélectionner —</option>
+                ${users.map(u=>`<option value="${u.id}">${window.escapeHtml(u.username)}</option>`).join('')}
+            </select>`;
+    }catch(e){const el=_q('dos-send-list');if(el)el.innerHTML=`<div style="font-size:.78rem;color:var(--danger);">${e.message}</div>`;}
+};
+
+window._dosDoSendSelected=async function(imo){
+    const sel=_q('dos-send-target');
+    if(!sel||!sel.value){
+        const m=_q('dos-send-msg');
+        if(m){m.style.color='var(--danger)';m.textContent='Sélectionnez un collègue.';}
+        return;
+    }
+    const toId  = sel.value;
+    const toName= sel.options[sel.selectedIndex]?.text||'';
+    await window._dosDoSend(imo, toId, toName);
 };
 
 window._dosDoSend=async function(imo,toId,toName){
@@ -550,48 +571,24 @@ function _showPopup(handoffs){
     ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
 }
 
-window._dosRespond = async function (hoId, imo, action, draftEnc) {
-    try {
-        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${window.S.currentUser.access_token}`
-                },
-                body: JSON.stringify({ handoff_id: hoId, action })
-            }, 10000);
-
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-
+window._dosRespond=async function(hoId,imo,action,draftEnc){
+    try{
+        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
+            {method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
+            body:JSON.stringify({handoff_id:hoId,action})},10000);
+        if(!r.ok)throw new Error(`HTTP ${r.status}`);
         _q(`dos-ho-${hoId}`)?.remove();
-
-if (action === 'accept' && draftEnc && draftEnc !== 'undefined') {
-    try {
-        const draft = JSON.parse(decodeURIComponent(draftEnc));
-        localStorage.setItem(_dk(imo), JSON.stringify(draft));
-        window.showToast(`📄 Dossier accepted for IMO ${imo}. Open the Dossier tab to view.`, 'success', 8000);
-    } catch (parseErr) {
-        console.warn('Failed to parse dossier draft data, saving raw:', parseErr);
-        // Still save the raw encoded data as fallback
-        localStorage.setItem(_dk(imo), draftEnc);
-        window.showToast('📄 Dossier accepted (draft saved)', 'success', 4000);
-    }
-    // Reload fleet data so the new vessel card appears (Worker already added the IMO)
-    setTimeout(() => window.loadData?.(), 800);
-} else if (action === 'accept') {
-    window.showToast('📄 Dossier accepted', 'success', 4000);
-} else {
-    window.showToast('Dossier refused', 'info', 3000);
-}
-
-window.S.pendingDossierCount = Math.max(0, (window.S.pendingDossierCount || 1) - 1);
-window.updateAlertBadge?.();
-if (!document.querySelector('[id^="dos-ho-"]')) _q('dosHoOverlay')?.remove();
-
-    } catch (e) {
-        window.showToast(`Error: ${e.message}`, 'danger');
-    }
+        if(action==='accept'&&draftEnc){
+            const draft=JSON.parse(decodeURIComponent(draftEnc));
+            localStorage.setItem(_dk(imo),JSON.stringify(draft));
+            window.showToast('📄 Dossier accepté — brouillon sauvegardé','success',4000);
+            if(!window.S?.trackedImosCache?.includes(imo)&&window.addVesselByIMO)
+                window.addVesselByIMO(imo).catch(()=>{});
+        }else window.showToast('Dossier refusé','info',3000);
+        window.S.pendingDossierCount=Math.max(0,(window.S.pendingDossierCount||1)-1);
+        window.updateAlertBadge?.();
+        if(!document.querySelector('[id^="dos-ho-"]'))_q('dosHoOverlay')?.remove();
+    }catch(e){window.showToast(`Erreur: ${e.message}`,'danger');}
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
