@@ -119,7 +119,9 @@ function _css() {
 .dsb{background:var(--bg-elevated);border-radius:10px;padding:12px;border:1px solid var(--border);margin-top:6px;display:none;}
 .dsh{font-size:.67rem;color:var(--text-soft);margin-top:6px;}
 .dshr{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--text-main);margin-bottom:6px;}
-.dshr input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);}`;
+.dshr input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);}
+.cargo-row button.remove-cargo{cursor:pointer;}
+#add-cargo-btn{cursor:pointer;}`;
     document.head.appendChild(s);
 }
 
@@ -186,16 +188,16 @@ window.openDossier = function(imo) {
             <div class="dr" style="margin-bottom:0;grid-column:1/-1;"><label class="dl">Propriétaire / Armateur</label><input id="dos-owner" class="di" type="text" value="${window.escapeHtml(ow)}" placeholder="Nom armateur"></div>
         </div>
 
+        <!-- MULTI‑CARGO SECTION -->
         <div class="ds">Cargaison &amp; Commercial</div>
-        <div class="dg2">
-            <div class="dr" style="margin-bottom:0;"><label class="dl">Cargaison</label><input id="dos-cargo" class="di" type="text" placeholder="Description"></div>
-            <div class="dr" style="margin-bottom:0;"><label class="dl">Poids B/L</label><input id="dos-bl" class="di" type="text" placeholder="ex. 3 038,633 MT"></div>
-            <div class="dr" style="margin-bottom:0;"><label class="dl">Chargeur (Shipper)</label><input id="dos-shipper" class="di" type="text" value="${window.escapeHtml(mem.shipper||'')}"></div>
-            <div class="dr" style="margin-bottom:0;"><label class="dl">Notify Party</label><input id="dos-notify" class="di" type="text" value="${window.escapeHtml(mem.notify||'')}"></div>
-            <div class="dr" style="margin-bottom:0;"><label class="dl">De (From)</label><input id="dos-from" class="di" type="text" value="${window.escapeHtml(mem.from||'')}" placeholder="Port d'origine"></div>
-            <div class="dr" style="margin-bottom:0;"><label class="dl">À (To)</label><input id="dos-to" class="di" type="text" value="${window.escapeHtml(mem.to||'')}" placeholder="Port destination"></div>
-            <div class="dr" style="margin-bottom:0;grid-column:1/-1;"><label class="dl">N° Bon de Commande (BC)</label><input id="dos-bc" class="di" type="text" value="${window.escapeHtml(mem.bc||'')}" placeholder="Numéro BC"></div>
+        <div id="cargo-container">
+            <div class="cargo-row dg2" style="margin-bottom:8px;">
+                <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description"></div>
+                <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT"></div>
+                <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+            </div>
         </div>
+        <button id="add-cargo-btn" type="button" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:.75rem; margin-top:6px;">+ Ajouter une cargaison</button>
 
         <div class="ds">Dates</div>
         <div class="dg2">
@@ -241,6 +243,29 @@ window.openDossier = function(imo) {
     window._dosOpen=false;
     window._dosCurrentOp='import';
 
+    // Multi-cargo row management
+    const cargoContainer = _q('cargo-container');
+    const addCargoBtn = _q('add-cargo-btn');
+    function addCargoRow(desc = '', weight = '') {
+        const row = document.createElement('div');
+        row.className = 'cargo-row dg2';
+        row.style.marginBottom = '8px';
+        row.innerHTML = `
+            <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description" value="${window.escapeHtml(desc)}"></div>
+            <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT" value="${window.escapeHtml(weight)}"></div>
+            <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+        `;
+        row.querySelector('.remove-cargo').addEventListener('click', () => row.remove());
+        cargoContainer.appendChild(row);
+    }
+    // Remove initial row's remove button if we want at least one row always present
+    const firstRow = cargoContainer.querySelector('.cargo-row');
+    if (firstRow) {
+        const btn = firstRow.querySelector('.remove-cargo');
+        if (btn) btn.style.visibility = 'hidden'; // hide remove on first row
+    }
+    addCargoBtn.addEventListener('click', () => addCargoRow());
+
     if (dp) _renderTpl(imo,dp,'import');
 
     // Load draft
@@ -253,13 +278,27 @@ window.openDossier = function(imo) {
             :'💾 Brouillon local';
     });
 
-    // Pre-fill cargo+bl from SOF draft
+    // Pre-fill cargo from SOF draft (optional)
     if(window.sofLoadDraft){
         window.sofLoadDraft(imo).then(sof=>{
             if(!sof)return;
-            const ce=_q('dos-cargo'),be=_q('dos-bl');
-            if(ce&&sof.cargo    &&!ce.value)ce.value=sof.cargo;
-            if(be&&sof.bl_weight&&!be.value)be.value=sof.bl_weight;
+            // Only pre-fill if no cargo rows exist yet
+            const rows = document.querySelectorAll('.cargo-row');
+            if (rows.length === 1 && !rows[0].querySelector('.cargo-desc').value && !rows[0].querySelector('.cargo-weight').value) {
+                if (sof.cargo) {
+                    // Attempt to split by newline or semicolon
+                    const descs = sof.cargo.split(/[;\n]/).map(s=>s.trim()).filter(s=>s);
+                    const weights = sof.bl_weight ? sof.bl_weight.split(/[;\n]/).map(s=>s.trim()).filter(s=>s) : [];
+                    for (let i=0; i<Math.max(descs.length,1); i++) {
+                        if (i===0 && rows[0]) {
+                            rows[0].querySelector('.cargo-desc').value = descs[i] || '';
+                            rows[0].querySelector('.cargo-weight').value = weights[i] || '';
+                        } else {
+                            addCargoRow(descs[i] || '', weights[i] || '');
+                        }
+                    }
+                }
+            }
         });
     }
 };
@@ -334,37 +373,50 @@ function _tglGard(imo,s){const b=_q('dos-gard-box');if(b)b.style.display=s?'bloc
 function _tglOt(s)      {const b=_q('dos-ot-box');  if(b)b.style.display=s?'block':'none';}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COLLECT DATA
+// COLLECT DATA (with cargo_items array)
 // ─────────────────────────────────────────────────────────────────────────────
 function _collect(imo){
     const tpls=[];
     document.querySelectorAll('[id^="dos-chk-"]').forEach(c=>{if(c.checked&&!c.disabled)tpls.push(c.id.replace('dos-chk-',''));});
     const shifts=SHIFTS.filter((_,i)=>_q(`dos-shift-${i}`)?.checked);
     _msave({shipper:_v('dos-shipper'),notify:_v('dos-notify'),from:_v('dos-from'),to:_v('dos-to'),bc:_v('dos-bc'),ste_garde:_v('dos-ste-garde')});
+
+    // Collect cargo items
+    const cargoItems = [];
+    document.querySelectorAll('.cargo-row').forEach(row => {
+        const desc = row.querySelector('.cargo-desc')?.value.trim() || '';
+        const weight = row.querySelector('.cargo-weight')?.value.trim() || '';
+        if (desc || weight) cargoItems.push({ description: desc, weight });
+    });
+    // Build concatenated strings for backward compatibility
+    const cargoStr = cargoItems.map(c => c.description).filter(s=>s).join('\n');
+    const blWeightStr = cargoItems.map(c => c.weight).filter(s=>s).join('\n');
+
     return {
-        imo,port:_v('dos-port'),operation:window._dosCurrentOp||'import',
-        vessel_name:_v('dos-vessel'),imo_str:imo,flag:_v('dos-flag'),
-        loa:_v('dos-loa'),deadweight:_v('dos-dw'),gross_tonnage:_v('dos-gt'),
-        owner:_v('dos-owner'),cargo:_v('dos-cargo'),bl_weight:_v('dos-bl'),
-        shipper:_v('dos-shipper'),notify:_v('dos-notify'),
-        from:_v('dos-from'),to:_v('dos-to'),bc:_v('dos-bc'),
-        arrival_date:_v('dos-arrival'),berthing_date:_v('dos-berthing'),
-        departure_date:_v('dos-departure'),date:_v('dos-date'),
+        imo, port:_v('dos-port'), operation:window._dosCurrentOp||'import',
+        vessel_name:_v('dos-vessel'), imo_str:imo, flag:_v('dos-flag'),
+        loa:_v('dos-loa'), deadweight:_v('dos-dw'), gross_tonnage:_v('dos-gt'),
+        owner:_v('dos-owner'), cargo:cargoStr, bl_weight:blWeightStr,
+        cargo_items: cargoItems,   // send array to backend
+        shipper:_v('dos-shipper'), notify:_v('dos-notify'),
+        from:_v('dos-from'), to:_v('dos-to'), bc:_v('dos-bc'),
+        arrival_date:_v('dos-arrival'), berthing_date:_v('dos-berthing'),
+        departure_date:_v('dos-departure'), date:_v('dos-date'),
         today_date:_td(),
         agent_count:_v('dos-agents')||String(_agents(imo)),
         ste_garde:_v('dos-ste-garde'),
         expimp:(window._dosCurrentOp==='export')?'Export':'Import',
         shift:shifts.join(', '),
-        templates:tpls,notes:_v('dos-notes'),
+        templates:tpls, notes:_v('dos-notes'),
     };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DRAFT SAVE / LOAD / CLEAR / APPLY
+// DRAFT SAVE / LOAD / CLEAR / APPLY (with cargo_items)
 // ─────────────────────────────────────────────────────────────────────────────
 window._dosSaveDraft=async function(imo){
     const data=_collect(imo),msg=_q('dos-msg');
-    // Sync cargo+bl back to SOF draft
+    // Sync cargo+bl back to SOF draft (optional)
     if(window.sofLoadDraft&&(data.cargo||data.bl_weight)){
         try{
             const sof=(await window.sofLoadDraft(imo))||{};
@@ -423,8 +475,9 @@ function _applyDraft(imo,d){
     const sv=(id,v)=>{const e=_q(id);if(e&&v!=null&&v!=='')e.value=v;};
     sv('dos-vessel',d.vessel_name);sv('dos-flag',d.flag);sv('dos-loa',d.loa);
     sv('dos-dw',d.deadweight);sv('dos-gt',d.gross_tonnage);sv('dos-owner',d.owner);
-    sv('dos-cargo',d.cargo);sv('dos-bl',d.bl_weight);sv('dos-shipper',d.shipper);
-    sv('dos-notify',d.notify);sv('dos-from',d.from);sv('dos-to',d.to);sv('dos-bc',d.bc);
+    // cargo and bl_weight are not applied directly; we use cargo_items
+    sv('dos-shipper',d.shipper);sv('dos-notify',d.notify);sv('dos-from',d.from);
+    sv('dos-to',d.to);sv('dos-bc',d.bc);
     sv('dos-arrival',d.arrival_date);sv('dos-berthing',d.berthing_date);
     sv('dos-departure',d.departure_date);sv('dos-date',d.date);
     sv('dos-agents',d.agent_count);sv('dos-ste-garde',d.ste_garde);sv('dos-notes',d.notes);
@@ -438,13 +491,44 @@ function _applyDraft(imo,d){
     }
     if(Array.isArray(d.shifts))
         SHIFTS.forEach((s,i)=>{const c=_q(`dos-shift-${i}`);if(c)c.checked=d.shifts.includes(s)||false;});
-    // handle legacy string
     if(typeof d.shift==='string'&&d.shift)
         SHIFTS.forEach((s,i)=>{const c=_q(`dos-shift-${i}`);if(c)c.checked=d.shift.includes(s);});
+
+    // Apply cargo items
+    const container = _q('cargo-container');
+    if (container && Array.isArray(d.cargo_items) && d.cargo_items.length) {
+        // Remove all existing rows except the first (keep it)
+        const rows = container.querySelectorAll('.cargo-row');
+        for (let i=1; i<rows.length; i++) rows[i].remove();
+        const firstRow = rows[0];
+        if (firstRow) {
+            firstRow.querySelector('.cargo-desc').value = d.cargo_items[0]?.description || '';
+            firstRow.querySelector('.cargo-weight').value = d.cargo_items[0]?.weight || '';
+        }
+        for (let i=1; i<d.cargo_items.length; i++) {
+            const row = document.createElement('div');
+            row.className = 'cargo-row dg2';
+            row.style.marginBottom = '8px';
+            row.innerHTML = `
+                <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description" value="${window.escapeHtml(d.cargo_items[i].description)}"></div>
+                <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT" value="${window.escapeHtml(d.cargo_items[i].weight)}"></div>
+                <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+            `;
+            row.querySelector('.remove-cargo').addEventListener('click', () => row.remove());
+            container.appendChild(row);
+        }
+    } else if (d.cargo || d.bl_weight) {
+        // fallback: convert old single fields into one cargo row
+        const firstRow = container.querySelector('.cargo-row');
+        if (firstRow) {
+            firstRow.querySelector('.cargo-desc').value = d.cargo || '';
+            firstRow.querySelector('.cargo-weight').value = d.bl_weight || '';
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HANDOFF — SEND PICKER
+// HANDOFF — SEND PICKER (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 window._dosSend=async function(imo){
     if(!window.S?.currentUser?.access_token){window.showToast('Connexion requise','danger');return;}
@@ -521,7 +605,7 @@ window._dosDoSend=async function(imo,toId,toName){
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HANDOFF — POLLING + POPUP
+// HANDOFF — POLLING + POPUP (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 window.startDossierHandoffPolling=function(){
     if(window._dosPoll)clearInterval(window._dosPoll);
@@ -592,7 +676,7 @@ window._dosRespond=async function(hoId,imo,action,draftEnc){
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REALTIME
+// REALTIME (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 window.startDossierRealtimeListener=function(){
     if(!window.S?.currentUser)return;
@@ -617,7 +701,7 @@ window.startDossierRealtimeListener=function(){
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GENERATE
+// GENERATE (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 window._dosGenerate=async function(imo){
     const data=_collect(imo);
@@ -653,10 +737,8 @@ window._dosGenerate=async function(imo){
     setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},4000);
 };
 
-// AUTO-START: call the real functions directly now that dossier.js is loaded.
-// _dosEagerLoad() in app.js already loaded this file; now wire up the real functions.
+// AUTO-START
 (function(){
-    // Re-register the real polling function so future calls bypass the app.js stub
     window.startDossierHandoffPolling = function() {
         if(window._dosPoll) clearInterval(window._dosPoll);
         window._dosPoll = setInterval(_chkPending, 60000);
@@ -665,9 +747,6 @@ window._dosGenerate=async function(imo){
     window.stopDossierHandoffPolling = function() {
         clearInterval(window._dosPoll); window._dosPoll = null;
     };
-    // startDossierRealtimeListener is already defined on window above — no reassignment needed
-
-    // Start now if user is logged in
     if(window.S?.currentUser?.access_token){
         window.startDossierRealtimeListener();
         window.startDossierHandoffPolling();
