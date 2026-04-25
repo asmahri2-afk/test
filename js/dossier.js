@@ -1,10 +1,9 @@
 // js/dossier.js — Dossier feature (lazy-loaded on first click)
-// Guard: skip if already loaded
 if (!window.openDossier) {
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 // PORT CONFIGURATION
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 const PORT_DOCS = {
     laayoune: {
         label: 'Laâyoune', pilotage: false,
@@ -29,9 +28,9 @@ const PORT_DOCS = {
     },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TEMPLATE DEFINITIONS  (tags = exact {{placeholders}} in each .docx)
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
+// TEMPLATE DEFINITIONS
+// ============================================================
 const TPL = {
     'tva-anp':                { label:'TVA — ANP',               g:'tva',      ops:['import','export'],
         tags:['vessel_name','imo','flag','arrival_date','bc'] },
@@ -65,9 +64,9 @@ const GRP_LABELS  = { tva:'💰 TVA', ops:'⚙️ Opérations', manifest:'📦 M
 const GRP_ORDER   = ['tva','ops','manifest','decl','misc'];
 const SHIFTS      = ['1er shift','2ème shift','3ème shift'];
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 // HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 const _q  = id => document.getElementById(id);
 const _v  = id => { const e=_q(id); return e?e.value.trim():''; };
 const _dk = imo => `dossier_draft_${imo}`;
@@ -93,9 +92,9 @@ function _pcdates(imo) {
 function _mload()    { try{return JSON.parse(localStorage.getItem('dossier_mem')||'{}')}catch(_){return{}} }
 function _msave(obj) { localStorage.setItem('dossier_mem',JSON.stringify({..._mload(),...obj})); }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CSS
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
+// CSS (includes polished cargo‑row styles)
+// ============================================================
 function _css() {
     if (_q('dossier-css')) return;
     const s=document.createElement('style'); s.id='dossier-css';
@@ -120,41 +119,65 @@ function _css() {
 .dsh{font-size:.67rem;color:var(--text-soft);margin-top:6px;}
 .dshr{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--text-main);margin-bottom:6px;}
 .dshr input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);}
-.cargo-row button.remove-cargo{cursor:pointer;}
-#add-cargo-btn{cursor:pointer;}`;
+/* Cargo rows – flex layout for tight spacing */
+.cargo-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.cargo-row .dr {
+    flex: 1;
+    margin-bottom: 0;
+}
+.cargo-row .remove-cargo {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+#add-cargo-btn {
+    margin-top: 4px;
+    cursor: pointer;
+}`;
     document.head.appendChild(s);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OPEN
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
+// OPEN DOSSIER MODAL
+// ============================================================
 window.openDossier = function(imo) {
     if (window._dosOpen) return; window._dosOpen=true;
     _q('dossierModal')?.remove(); _q('dossierOverlay')?.remove();
 
-    const v  =window.S?.vesselsDataMap?.get(imo)||{};
-    const sc =window.S?.staticCache?.get(imo)||{};
-    const nm =v.name||sc.name||`IMO ${imo}`;
-    const dp =_port(imo);
-    const dt =_pcdates(imo);
-    const mem=_mload();
-    const ow =window._ownersCache?.get(imo)?.name||'';
+    const v  = window.S?.vesselsDataMap?.get(imo)||{};
+    const sc = window.S?.staticCache?.get(imo)||{};
+    const nm = v.name||sc.name||`IMO ${imo}`;
+    const dp = _port(imo);
+    const dt = _pcdates(imo);
+    const mem = _mload();
+    const ow = window._ownersCache?.get(imo)?.name||'';
 
     _css();
 
-    const ov=document.createElement('div');
-    ov.id='dossierOverlay';
-    ov.style.cssText='position:fixed;inset:0;z-index:9100;background:rgba(0,0,0,.55);';
-    ov.onclick=e=>{if(e.target===ov)window.closeDossier();};
+    const ov = document.createElement('div');
+    ov.id = 'dossierOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9100;background:rgba(0,0,0,.55);';
+    ov.onclick = e => { if(e.target===ov) window.closeDossier(); };
 
-    const mo=document.createElement('div');
-    mo.id='dossierModal';
-    mo.style.cssText='position:fixed;top:0;right:0;height:100%;width:min(580px,100vw);'+
+    const mo = document.createElement('div');
+    mo.id = 'dossierModal';
+    mo.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:min(580px,100vw);'+
         'background:var(--bg-card);border-left:1px solid var(--border);'+
         'z-index:9101;overflow-y:auto;display:flex;flex-direction:column;'+
         'box-shadow:-8px 0 40px rgba(0,0,0,.4);';
 
-    mo.innerHTML=`
+    mo.innerHTML = `
     <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg-card);z-index:10;">
         <div><div style="font-weight:700;font-size:.95rem;color:var(--text-main);">📄 Dossier</div>
         <div style="font-size:.72rem;color:var(--text-soft);">${window.escapeHtml(nm)} — IMO ${imo}</div></div>
@@ -166,9 +189,7 @@ window.openDossier = function(imo) {
         <div class="dr"><label class="dl">Port</label>
             <select id="dos-port" class="di" onchange="window._dosPortChange('${imo}')">
                 <option value="">— Sélectionner —</option>
-                ${Object.entries(PORT_DOCS).map(([k,p])=>
-                    `<option value="${k}"${k===dp?' selected':''}>${p.label}</option>`
-                ).join('')}
+                ${Object.entries(PORT_DOCS).map(([k,p])=>`<option value="${k}"${k===dp?' selected':''}>${p.label}</option>`).join('')}
             </select></div>
         <div class="dr"><label class="dl">Opération</label>
             <div style="display:flex;gap:0;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
@@ -188,16 +209,16 @@ window.openDossier = function(imo) {
             <div class="dr" style="margin-bottom:0;grid-column:1/-1;"><label class="dl">Propriétaire / Armateur</label><input id="dos-owner" class="di" type="text" value="${window.escapeHtml(ow)}" placeholder="Nom armateur"></div>
         </div>
 
-        <!-- MULTI‑CARGO SECTION -->
+        <!-- MULTI‑CARGO SECTION (flex layout) -->
         <div class="ds">Cargaison &amp; Commercial</div>
         <div id="cargo-container">
-            <div class="cargo-row dg2" style="margin-bottom:8px;">
+            <div class="cargo-row">
                 <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description"></div>
                 <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT"></div>
-                <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+                <button type="button" class="remove-cargo" style="visibility:hidden;">✕</button>
             </div>
         </div>
-        <button id="add-cargo-btn" type="button" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:.75rem; margin-top:6px;">+ Ajouter une cargaison</button>
+        <button id="add-cargo-btn" type="button" class="btn-ghost" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:.75rem;">+ Ajouter une cargaison</button>
 
         <div class="ds">Dates</div>
         <div class="dg2">
@@ -240,53 +261,49 @@ window.openDossier = function(imo) {
 
     document.body.appendChild(ov);
     document.body.appendChild(mo);
-    window._dosOpen=false;
-    window._dosCurrentOp='import';
+    window._dosOpen = false;
+    window._dosCurrentOp = 'import';
 
-    // Multi-cargo row management
+    // ---- Cargo row management ----
     const cargoContainer = _q('cargo-container');
     const addCargoBtn = _q('add-cargo-btn');
+
     function addCargoRow(desc = '', weight = '') {
         const row = document.createElement('div');
-        row.className = 'cargo-row dg2';
-        row.style.marginBottom = '8px';
+        row.className = 'cargo-row';
         row.innerHTML = `
             <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description" value="${window.escapeHtml(desc)}"></div>
             <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT" value="${window.escapeHtml(weight)}"></div>
-            <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+            <button type="button" class="remove-cargo">✕</button>
         `;
         row.querySelector('.remove-cargo').addEventListener('click', () => row.remove());
         cargoContainer.appendChild(row);
     }
-    // Remove initial row's remove button if we want at least one row always present
+
+    // Hide remove button on the first (default) row
     const firstRow = cargoContainer.querySelector('.cargo-row');
-    if (firstRow) {
-        const btn = firstRow.querySelector('.remove-cargo');
-        if (btn) btn.style.visibility = 'hidden'; // hide remove on first row
-    }
+    if (firstRow) firstRow.querySelector('.remove-cargo').style.visibility = 'hidden';
     addCargoBtn.addEventListener('click', () => addCargoRow());
 
-    if (dp) _renderTpl(imo,dp,'import');
+    if (dp) _renderTpl(imo, dp, 'import');
 
     // Load draft
-    window._dosLoadDraft(imo).then(d=>{
-        if(!d)return;
-        _applyDraft(imo,d);
-        const el=_q('dos-draft-info');
-        if(el) el.textContent=d._source==='supabase'&&d._updated
-            ?`☁️ Sauvegardé le ${new Date(d._updated).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}`
-            :'💾 Brouillon local';
+    window._dosLoadDraft(imo).then(d => {
+        if (!d) return;
+        _applyDraft(imo, d);
+        const el = _q('dos-draft-info');
+        if (el) el.textContent = d._source === 'supabase' && d._updated
+            ? `☁️ Sauvegardé le ${new Date(d._updated).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}`
+            : '💾 Brouillon local';
     });
 
-    // Pre-fill cargo from SOF draft (optional)
-    if(window.sofLoadDraft){
-        window.sofLoadDraft(imo).then(sof=>{
-            if(!sof)return;
-            // Only pre-fill if no cargo rows exist yet
+    // Pre-fill from SOF draft if empty
+    if (window.sofLoadDraft) {
+        window.sofLoadDraft(imo).then(sof => {
+            if (!sof) return;
             const rows = document.querySelectorAll('.cargo-row');
             if (rows.length === 1 && !rows[0].querySelector('.cargo-desc').value && !rows[0].querySelector('.cargo-weight').value) {
                 if (sof.cargo) {
-                    // Attempt to split by newline or semicolon
                     const descs = sof.cargo.split(/[;\n]/).map(s=>s.trim()).filter(s=>s);
                     const weights = sof.bl_weight ? sof.bl_weight.split(/[;\n]/).map(s=>s.trim()).filter(s=>s) : [];
                     for (let i=0; i<Math.max(descs.length,1); i++) {
@@ -303,92 +320,95 @@ window.openDossier = function(imo) {
     }
 };
 
-window.closeDossier=function(){_q('dossierModal')?.remove();_q('dossierOverlay')?.remove();};
+window.closeDossier = function() {
+    _q('dossierModal')?.remove();
+    _q('dossierOverlay')?.remove();
+};
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 // PORT / OP CHANGE
-// ─────────────────────────────────────────────────────────────────────────────
-window._dosPortChange=function(imo){
-    const p=_v('dos-port'),op=window._dosCurrentOp||'import';
-    if(p)_renderTpl(imo,p,op);
-    else _q('dos-tpl-list').innerHTML='<div style="color:var(--text-soft);font-size:.8rem;">Sélectionnez un port.</div>';
+// ============================================================
+window._dosPortChange = function(imo) {
+    const p = _v('dos-port'), op = window._dosCurrentOp || 'import';
+    if (p) _renderTpl(imo, p, op);
+    else _q('dos-tpl-list').innerHTML = '<div style="color:var(--text-soft);font-size:.8rem;">Sélectionnez un port.</div>';
 };
 
-window._dosSetOp=function(imo,op){
-    window._dosCurrentOp=op;
-    ['import','export','cabotage'].forEach(o=>{
-        const b=_q(`dos-op-${o}`);if(!b)return;
-        b.style.background=o===op?'var(--accent)':'var(--bg-elevated)';
-        b.style.color     =o===op?'#fff'         :'var(--text-soft)';
+window._dosSetOp = function(imo, op) {
+    window._dosCurrentOp = op;
+    ['import','export','cabotage'].forEach(o => {
+        const b = _q(`dos-op-${o}`); if (!b) return;
+        b.style.background = o===op ? 'var(--accent)' : 'var(--bg-elevated)';
+        b.style.color      = o===op ? '#fff' : 'var(--text-soft)';
     });
-    const n=_q('dos-cab-notice');if(n)n.style.display=op==='cabotage'?'block':'none';
-    const p=_v('dos-port');if(p)_renderTpl(imo,p,op);
+    const n = _q('dos-cab-notice'); if (n) n.style.display = op==='cabotage' ? 'block' : 'none';
+    const p = _v('dos-port'); if (p) _renderTpl(imo, p, op);
 };
 
-window._dosUpdAgents=function(imo){const e=_q('dos-agents');if(e)e.value=_agents(imo);};
+window._dosUpdAgents = function(imo) {
+    const e = _q('dos-agents'); if (e) e.value = _agents(imo);
+};
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 // TEMPLATE LIST RENDER
-// ─────────────────────────────────────────────────────────────────────────────
-function _renderTpl(imo,portKey,op){
-    const cfg=PORT_DOCS[portKey],con=_q('dos-tpl-list');
-    if(!cfg||!con)return;
-    const cab=op==='cabotage',eop=cab?'import':op;
-    const grps={};
-    cfg.templates.forEach(id=>{
-        const t=TPL[id];if(!t)return;
-        if(['manifest','decl'].includes(t.g)&&!t.ops.includes(eop))return;
-        if(!grps[t.g])grps[t.g]=[];
+// ============================================================
+function _renderTpl(imo, portKey, op) {
+    const cfg = PORT_DOCS[portKey], con = _q('dos-tpl-list');
+    if (!cfg || !con) return;
+    const cab = op === 'cabotage', eop = cab ? 'import' : op;
+    const grps = {};
+    cfg.templates.forEach(id => {
+        const t = TPL[id]; if (!t) return;
+        if (['manifest','decl'].includes(t.g) && !t.ops.includes(eop)) return;
+        if (!grps[t.g]) grps[t.g] = [];
         grps[t.g].push(id);
     });
-    let html='';
-    GRP_ORDER.forEach(g=>{
-        const items=grps[g];if(!items?.length)return;
-        html+=`<div class="dgr"><div class="dgl">${GRP_LABELS[g]}</div>`;
-        items.forEach(id=>{
-            const t=TPL[id],dis=cab&&t.g==='tva',chk=!dis;
-            html+=`<div class="dc ${dis?'ddis':''}" id="dos-row-${id}"
+    let html = '';
+    GRP_ORDER.forEach(g => {
+        const items = grps[g]; if (!items?.length) return;
+        html += `<div class="dgr"><div class="dgl">${GRP_LABELS[g]}</div>`;
+        items.forEach(id => {
+            const t = TPL[id], dis = cab && t.g === 'tva', chk = !dis;
+            html += `<div class="dc ${dis?'ddis':''}" id="dos-row-${id}"
                 onclick="window._dosTglRow('${imo}','${id}')">
                 <input type="checkbox" id="dos-chk-${id}" ${chk?'checked':''} ${dis?'disabled':''}
                     onclick="event.stopPropagation();window._dosChk('${imo}','${id}',this.checked)">
                 <label class="dcl" for="dos-chk-${id}">${t.label}</label>
             </div>`;
         });
-        html+='</div>';
+        html += '</div>';
     });
-    con.innerHTML=html||'<div style="color:var(--text-soft);font-size:.8rem;">Aucun document.</div>';
-    const gc=_q('dos-chk-gardiennage');_tglGard(imo,!!(gc?.checked&&!gc?.disabled));
-    const oc=_q('dos-chk-overtime');   _tglOt(!!(oc?.checked&&!oc?.disabled));
+    con.innerHTML = html || '<div style="color:var(--text-soft);font-size:.8rem;">Aucun document.</div>';
+    const gc = _q('dos-chk-gardiennage'); _tglGard(imo, !!(gc?.checked && !gc?.disabled));
+    const oc = _q('dos-chk-overtime');   _tglOt(!!(oc?.checked && !oc?.disabled));
 }
 
-window._dosTglRow=function(imo,id){
-    const c=_q(`dos-chk-${id}`);
-    if(c&&!c.disabled){c.checked=!c.checked;window._dosChk(imo,id,c.checked);}
+window._dosTglRow = function(imo, id) {
+    const c = _q(`dos-chk-${id}`);
+    if (c && !c.disabled) { c.checked = !c.checked; window._dosChk(imo, id, c.checked); }
 };
-window._dosChk=function(imo,id,v){
-    if(id==='gardiennage')_tglGard(imo,v);
-    if(id==='overtime')   _tglOt(v);
+window._dosChk = function(imo, id, v) {
+    if (id === 'gardiennage') _tglGard(imo, v);
+    if (id === 'overtime')   _tglOt(v);
 };
-function _tglGard(imo,s){const b=_q('dos-gard-box');if(b)b.style.display=s?'block':'none';if(s)window._dosUpdAgents(imo);}
-function _tglOt(s)      {const b=_q('dos-ot-box');  if(b)b.style.display=s?'block':'none';}
+function _tglGard(imo, s) { const b = _q('dos-gard-box'); if (b) b.style.display = s ? 'block' : 'none'; if (s) window._dosUpdAgents(imo); }
+function _tglOt(s)       { const b = _q('dos-ot-box');   if (b) b.style.display = s ? 'block' : 'none'; }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
 // COLLECT DATA (with cargo_items array)
-// ─────────────────────────────────────────────────────────────────────────────
-function _collect(imo){
-    const tpls=[];
-    document.querySelectorAll('[id^="dos-chk-"]').forEach(c=>{if(c.checked&&!c.disabled)tpls.push(c.id.replace('dos-chk-',''));});
-    const shifts=SHIFTS.filter((_,i)=>_q(`dos-shift-${i}`)?.checked);
-    _msave({shipper:_v('dos-shipper'),notify:_v('dos-notify'),from:_v('dos-from'),to:_v('dos-to'),bc:_v('dos-bc'),ste_garde:_v('dos-ste-garde')});
+// ============================================================
+function _collect(imo) {
+    const tpls = [];
+    document.querySelectorAll('[id^="dos-chk-"]').forEach(c => { if (c.checked && !c.disabled) tpls.push(c.id.replace('dos-chk-','')); });
+    const shifts = SHIFTS.filter((_,i) => _q(`dos-shift-${i}`)?.checked);
+    _msave({ shipper:_v('dos-shipper'), notify:_v('dos-notify'), from:_v('dos-from'), to:_v('dos-to'), bc:_v('dos-bc'), ste_garde:_v('dos-ste-garde') });
 
-    // Collect cargo items
     const cargoItems = [];
     document.querySelectorAll('.cargo-row').forEach(row => {
         const desc = row.querySelector('.cargo-desc')?.value.trim() || '';
         const weight = row.querySelector('.cargo-weight')?.value.trim() || '';
         if (desc || weight) cargoItems.push({ description: desc, weight });
     });
-    // Build concatenated strings for backward compatibility
     const cargoStr = cargoItems.map(c => c.description).filter(s=>s).join('\n');
     const blWeightStr = cargoItems.map(c => c.weight).filter(s=>s).join('\n');
 
@@ -397,7 +417,7 @@ function _collect(imo){
         vessel_name:_v('dos-vessel'), imo_str:imo, flag:_v('dos-flag'),
         loa:_v('dos-loa'), deadweight:_v('dos-dw'), gross_tonnage:_v('dos-gt'),
         owner:_v('dos-owner'), cargo:cargoStr, bl_weight:blWeightStr,
-        cargo_items: cargoItems,   // send array to backend
+        cargo_items: cargoItems,
         shipper:_v('dos-shipper'), notify:_v('dos-notify'),
         from:_v('dos-from'), to:_v('dos-to'), bc:_v('dos-bc'),
         arrival_date:_v('dos-arrival'), berthing_date:_v('dos-berthing'),
@@ -411,114 +431,108 @@ function _collect(imo){
     };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DRAFT SAVE / LOAD / CLEAR / APPLY (with cargo_items)
-// ─────────────────────────────────────────────────────────────────────────────
-window._dosSaveDraft=async function(imo){
-    const data=_collect(imo),msg=_q('dos-msg');
-    // Sync cargo+bl back to SOF draft (optional)
-    if(window.sofLoadDraft&&(data.cargo||data.bl_weight)){
-        try{
-            const sof=(await window.sofLoadDraft(imo))||{};
-            let chg=false;
-            if(data.cargo&&sof.cargo!==data.cargo){sof.cargo=data.cargo;chg=true;}
-            if(data.bl_weight&&sof.bl_weight!==data.bl_weight){sof.bl_weight=data.bl_weight;chg=true;}
-            if(chg&&window.S?.currentUser?.access_token)
+// ============================================================
+// DRAFT SAVE / LOAD / CLEAR / APPLY
+// ============================================================
+window._dosSaveDraft = async function(imo) {
+    const data = _collect(imo), msg = _q('dos-msg');
+    // Sync with SOF draft (optional)
+    if (window.sofLoadDraft && (data.cargo || data.bl_weight)) {
+        try {
+            const sof = (await window.sofLoadDraft(imo)) || {};
+            let chg = false;
+            if (data.cargo && sof.cargo !== data.cargo) { sof.cargo = data.cargo; chg = true; }
+            if (data.bl_weight && sof.bl_weight !== data.bl_weight) { sof.bl_weight = data.bl_weight; chg = true; }
+            if (chg && window.S?.currentUser?.access_token)
                 window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/sof/draft`,
-                    {method:'POST',headers:{'Content-Type':'application/json',
-                    'Authorization':`Bearer ${window.S.currentUser.access_token}`},
-                    body:JSON.stringify({imo,...sof})},8000).catch(()=>{});
-        }catch(_){}
+                    { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
+                      body:JSON.stringify({imo,...sof}) },8000).catch(()=>{});
+        } catch(_) {}
     }
-    if(window.S?.currentUser?.access_token){
-        try{
-            const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/draft`,
-                {method:'POST',headers:{'Content-Type':'application/json',
-                'Authorization':`Bearer ${window.S.currentUser.access_token}`},
-                body:JSON.stringify({imo,data,notes:data.notes})},8000);
-            if(r.ok){
-                localStorage.setItem(_dk(imo),JSON.stringify(data));
-                if(msg){msg.style.color='var(--success)';msg.textContent='✅ Sauvegardé';}
-                setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},2500);
+    if (window.S?.currentUser?.access_token) {
+        try {
+            const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/draft`,
+                { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
+                  body:JSON.stringify({imo, data, notes:data.notes}) },8000);
+            if (r.ok) {
+                localStorage.setItem(_dk(imo), JSON.stringify(data));
+                if (msg) { msg.style.color = 'var(--success)'; msg.textContent = '✅ Sauvegardé'; }
+                setTimeout(() => { const m = _q('dos-msg'); if (m) m.textContent = ''; }, 2500);
                 return;
             }
-        }catch(_){}
+        } catch(_) {}
     }
-    localStorage.setItem(_dk(imo),JSON.stringify(data));
-    if(msg){msg.style.color='var(--warning)';msg.textContent='⚠️ Sauvegardé localement';}
-    setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},2500);
+    localStorage.setItem(_dk(imo), JSON.stringify(data));
+    if (msg) { msg.style.color = 'var(--warning)'; msg.textContent = '⚠️ Sauvegardé localement'; }
+    setTimeout(() => { const m = _q('dos-msg'); if (m) m.textContent = ''; }, 2500);
 };
 
-window._dosLoadDraft=async function(imo){
-    if(window.S?.currentUser?.access_token){
-        try{
-            const r=await window.fetchWithTimeout(
-                `${window.CONFIG.WORKER_URL}/dossier/draft?imo=${imo}`,
-                {headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`}},8000);
-            if(r.ok){const d=await r.json();if(d.data)return{...d.data,notes:d.notes,_source:'supabase',_updated:d.updated_at};}
-        }catch(_){}
+window._dosLoadDraft = async function(imo) {
+    if (window.S?.currentUser?.access_token) {
+        try {
+            const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/draft?imo=${imo}`,
+                { headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`} },8000);
+            if (r.ok) { const d = await r.json(); if (d.data) return { ...d.data, notes:d.notes, _source:'supabase', _updated:d.updated_at }; }
+        } catch(_) {}
     }
-    const raw=localStorage.getItem(_dk(imo));
-    return raw?{...JSON.parse(raw),_source:'local'}:null;
+    const raw = localStorage.getItem(_dk(imo));
+    return raw ? { ...JSON.parse(raw), _source:'local' } : null;
 };
 
-window._dosClear=async function(imo){
-    if(!confirm('Effacer et supprimer le brouillon ?'))return;
-    if(window.S?.currentUser?.access_token)
+window._dosClear = async function(imo) {
+    if (!confirm('Effacer et supprimer le brouillon ?')) return;
+    if (window.S?.currentUser?.access_token)
         window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/draft?imo=${imo}`,
-            {method:'DELETE',headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`}},8000).catch(()=>{});
+            { method:'DELETE', headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`} },8000).catch(()=>{});
     localStorage.removeItem(_dk(imo));
-    window.closeDossier();window.openDossier(imo);
+    window.closeDossier(); window.openDossier(imo);
 };
 
-function _applyDraft(imo,d){
-    const sv=(id,v)=>{const e=_q(id);if(e&&v!=null&&v!=='')e.value=v;};
-    sv('dos-vessel',d.vessel_name);sv('dos-flag',d.flag);sv('dos-loa',d.loa);
-    sv('dos-dw',d.deadweight);sv('dos-gt',d.gross_tonnage);sv('dos-owner',d.owner);
-    // cargo and bl_weight are not applied directly; we use cargo_items
-    sv('dos-shipper',d.shipper);sv('dos-notify',d.notify);sv('dos-from',d.from);
-    sv('dos-to',d.to);sv('dos-bc',d.bc);
-    sv('dos-arrival',d.arrival_date);sv('dos-berthing',d.berthing_date);
-    sv('dos-departure',d.departure_date);sv('dos-date',d.date);
-    sv('dos-agents',d.agent_count);sv('dos-ste-garde',d.ste_garde);sv('dos-notes',d.notes);
-    if(d.port){sv('dos-port',d.port);window._dosPortChange(imo);}
-    if(d.operation)window._dosSetOp(imo,d.operation);
-    if(Array.isArray(d.templates)){
-        document.querySelectorAll('[id^="dos-chk-"]').forEach(c=>{if(!c.disabled)c.checked=false;});
-        d.templates.forEach(id=>{const c=_q(`dos-chk-${id}`);if(c&&!c.disabled)c.checked=true;});
-        const gc=_q('dos-chk-gardiennage');_tglGard(imo,!!(gc?.checked));
-        const oc=_q('dos-chk-overtime');   _tglOt(!!(oc?.checked));
+function _applyDraft(imo, d) {
+    const sv = (id,v) => { const e = _q(id); if (e && v!=null && v!=='') e.value = v; };
+    sv('dos-vessel', d.vessel_name); sv('dos-flag', d.flag); sv('dos-loa', d.loa);
+    sv('dos-dw', d.deadweight); sv('dos-gt', d.gross_tonnage); sv('dos-owner', d.owner);
+    sv('dos-shipper', d.shipper); sv('dos-notify', d.notify); sv('dos-from', d.from);
+    sv('dos-to', d.to); sv('dos-bc', d.bc);
+    sv('dos-arrival', d.arrival_date); sv('dos-berthing', d.berthing_date);
+    sv('dos-departure', d.departure_date); sv('dos-date', d.date);
+    sv('dos-agents', d.agent_count); sv('dos-ste-garde', d.ste_garde); sv('dos-notes', d.notes);
+    if (d.port) { sv('dos-port', d.port); window._dosPortChange(imo); }
+    if (d.operation) window._dosSetOp(imo, d.operation);
+    if (Array.isArray(d.templates)) {
+        document.querySelectorAll('[id^="dos-chk-"]').forEach(c => { if (!c.disabled) c.checked = false; });
+        d.templates.forEach(id => { const c = _q(`dos-chk-${id}`); if (c && !c.disabled) c.checked = true; });
+        const gc = _q('dos-chk-gardiennage'); _tglGard(imo, !!(gc?.checked));
+        const oc = _q('dos-chk-overtime');   _tglOt(!!(oc?.checked));
     }
-    if(Array.isArray(d.shifts))
-        SHIFTS.forEach((s,i)=>{const c=_q(`dos-shift-${i}`);if(c)c.checked=d.shifts.includes(s)||false;});
-    if(typeof d.shift==='string'&&d.shift)
-        SHIFTS.forEach((s,i)=>{const c=_q(`dos-shift-${i}`);if(c)c.checked=d.shift.includes(s);});
+    if (Array.isArray(d.shifts))
+        SHIFTS.forEach((s,i) => { const c = _q(`dos-shift-${i}`); if (c) c.checked = d.shifts.includes(s); });
+    if (typeof d.shift === 'string' && d.shift)
+        SHIFTS.forEach((s,i) => { const c = _q(`dos-shift-${i}`); if (c) c.checked = d.shift.includes(s); });
 
     // Apply cargo items
     const container = _q('cargo-container');
     if (container && Array.isArray(d.cargo_items) && d.cargo_items.length) {
-        // Remove all existing rows except the first (keep it)
         const rows = container.querySelectorAll('.cargo-row');
         for (let i=1; i<rows.length; i++) rows[i].remove();
         const firstRow = rows[0];
         if (firstRow) {
             firstRow.querySelector('.cargo-desc').value = d.cargo_items[0]?.description || '';
             firstRow.querySelector('.cargo-weight').value = d.cargo_items[0]?.weight || '';
+            firstRow.querySelector('.remove-cargo').style.visibility = 'hidden';
         }
         for (let i=1; i<d.cargo_items.length; i++) {
             const row = document.createElement('div');
-            row.className = 'cargo-row dg2';
-            row.style.marginBottom = '8px';
+            row.className = 'cargo-row';
             row.innerHTML = `
                 <div class="dr"><label class="dl">Cargaison</label><input class="di cargo-desc" type="text" placeholder="Description" value="${window.escapeHtml(d.cargo_items[i].description)}"></div>
                 <div class="dr"><label class="dl">Poids B/L</label><input class="di cargo-weight" type="text" placeholder="ex. 3 038,633 MT" value="${window.escapeHtml(d.cargo_items[i].weight)}"></div>
-                <button type="button" class="remove-cargo" style="background:none; border:none; color:var(--danger); font-size:1.2rem; align-self:flex-end; margin-bottom:4px;">✕</button>
+                <button type="button" class="remove-cargo">✕</button>
             `;
             row.querySelector('.remove-cargo').addEventListener('click', () => row.remove());
             container.appendChild(row);
         }
     } else if (d.cargo || d.bl_weight) {
-        // fallback: convert old single fields into one cargo row
         const firstRow = container.querySelector('.cargo-row');
         if (firstRow) {
             firstRow.querySelector('.cargo-desc').value = d.cargo || '';
@@ -527,24 +541,19 @@ function _applyDraft(imo,d){
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HANDOFF — SEND PICKER (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
-window._dosSend=async function(imo){
-    if(!window.S?.currentUser?.access_token){window.showToast('Connexion requise','danger');return;}
+// ============================================================
+// HANDOFF (send / receive) – unchanged from original
+// ============================================================
+window._dosSend = async function(imo) {
+    if (!window.S?.currentUser?.access_token) { window.showToast('Connexion requise','danger'); return; }
     _q('dosSendModal')?.remove();
-    const pop=document.createElement('div');pop.id='dosSendModal';
-    pop.style.cssText='position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
-    pop.innerHTML=`
+    const pop = document.createElement('div'); pop.id = 'dosSendModal';
+    pop.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    pop.innerHTML = `
         <div style="background:var(--bg-card);border-radius:14px;padding:20px;max-width:360px;width:100%;border:1px solid var(--border);">
             <div style="font-weight:700;font-size:.95rem;margin-bottom:14px;color:var(--text-main);">📤 Envoyer Dossier</div>
-            <div id="dos-send-list" style="margin-bottom:12px;">
-                <div style="font-size:.78rem;color:var(--text-soft);">Chargement...</div>
-            </div>
-            <div style="margin-bottom:10px;">
-                <label style="font-size:.72rem;color:var(--text-soft);">Notes</label>
-                <input id="dos-send-notes" type="text" placeholder="ex. Compléter section port..." class="di" style="margin-top:4px;">
-            </div>
+            <div id="dos-send-list" style="margin-bottom:12px;"><div style="font-size:.78rem;color:var(--text-soft);">Chargement...</div></div>
+            <div style="margin-bottom:10px;"><label style="font-size:.72rem;color:var(--text-soft);">Notes</label><input id="dos-send-notes" type="text" placeholder="ex. Compléter section port..." class="di" style="margin-top:4px;"></div>
             <div style="display:flex;gap:8px;">
                 <button onclick="document.getElementById('dosSendModal')?.remove()" class="btn-ghost" style="flex:1;padding:8px;font-size:.78rem;">Annuler</button>
                 <button onclick="window._dosDoSendSelected('${imo}')" class="btn-primary" style="flex:1;padding:8px;font-size:.78rem;" id="dos-send-btn">Envoyer</button>
@@ -552,202 +561,182 @@ window._dosSend=async function(imo){
             <div id="dos-send-msg" style="font-size:.72rem;min-height:14px;margin-top:6px;text-align:center;"></div>
         </div>`;
     document.body.appendChild(pop);
-    pop.addEventListener('click',e=>{if(e.target===pop)pop.remove();});
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/users/list`,
-            {headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`}},8000);
-        if(!r.ok)throw new Error('Impossible de charger les utilisateurs');
-        const data=await r.json();
-        const users=data.users||[];
-        const el=_q('dos-send-list');if(!el)return;
-        if(!users.length){
-            el.innerHTML='<div style="font-size:.78rem;color:var(--text-soft);">Aucun collègue disponible.</div>';
+    pop.addEventListener('click', e => { if (e.target === pop) pop.remove(); });
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/users/list`,
+            { headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`} },8000);
+        if (!r.ok) throw new Error('Impossible de charger les utilisateurs');
+        const data = await r.json();
+        const users = data.users || [];
+        const el = _q('dos-send-list'); if (!el) return;
+        if (!users.length) {
+            el.innerHTML = '<div style="font-size:.78rem;color:var(--text-soft);">Aucun collègue disponible.</div>';
             return;
         }
-        el.innerHTML=`
+        el.innerHTML = `
             <label style="font-size:.72rem;color:var(--text-soft);">Destinataire</label>
             <select id="dos-send-target" class="di" style="margin-top:4px;">
                 <option value="">— Sélectionner —</option>
-                ${users.map(u=>`<option value="${u.id}">${window.escapeHtml(u.username)}</option>`).join('')}
+                ${users.map(u => `<option value="${u.id}">${window.escapeHtml(u.username)}</option>`).join('')}
             </select>`;
-    }catch(e){const el=_q('dos-send-list');if(el)el.innerHTML=`<div style="font-size:.78rem;color:var(--danger);">${e.message}</div>`;}
+    } catch(e) { const el = _q('dos-send-list'); if (el) el.innerHTML = `<div style="font-size:.78rem;color:var(--danger);">${e.message}</div>`; }
 };
 
-window._dosDoSendSelected=async function(imo){
-    const sel=_q('dos-send-target');
-    if(!sel||!sel.value){
-        const m=_q('dos-send-msg');
-        if(m){m.style.color='var(--danger)';m.textContent='Sélectionnez un collègue.';}
-        return;
-    }
-    const toId  = sel.value;
-    const toName= sel.options[sel.selectedIndex]?.text||'';
+window._dosDoSendSelected = async function(imo) {
+    const sel = _q('dos-send-target');
+    if (!sel || !sel.value) { const m = _q('dos-send-msg'); if (m) { m.style.color='var(--danger)'; m.textContent='Sélectionnez un collègue.'; } return; }
+    const toId = sel.value, toName = sel.options[sel.selectedIndex]?.text || '';
     await window._dosDoSend(imo, toId, toName);
 };
 
-window._dosDoSend=async function(imo,toId,toName){
-    const v=window.S?.vesselsDataMap?.get(imo)||{};
-    const draft=_collect(imo),notes=_q('dos-send-notes')?.value||'';
-    const msgEl=_q('dos-send-msg'),btn=event?.target;
-    if(btn)btn.disabled=true;
-    if(msgEl){msgEl.style.color='var(--text-soft)';msgEl.textContent='Envoi...';}
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/send`,
-            {method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
-            body:JSON.stringify({to_user_id:toId,imo,vessel_name:v.name||`IMO ${imo}`,draft_data:draft,notes})},10000);
-        if(!r.ok)throw new Error(`HTTP ${r.status}`);
-        if(msgEl){msgEl.style.color='var(--success)';msgEl.textContent=`✅ Envoyé à ${toName}!`;}
-        setTimeout(()=>_q('dosSendModal')?.remove(),1800);
-    }catch(e){
-        if(msgEl){msgEl.style.color='var(--danger)';msgEl.textContent=`Erreur: ${e.message}`;}
-        if(btn)btn.disabled=false;
+window._dosDoSend = async function(imo, toId, toName) {
+    const v = window.S?.vesselsDataMap?.get(imo)||{};
+    const draft = _collect(imo), notes = _q('dos-send-notes')?.value || '';
+    const msgEl = _q('dos-send-msg'), btn = event?.target;
+    if (btn) btn.disabled = true;
+    if (msgEl) { msgEl.style.color = 'var(--text-soft)'; msgEl.textContent = 'Envoi...'; }
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/send`,
+            { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
+              body:JSON.stringify({to_user_id:toId, imo, vessel_name:v.name||`IMO ${imo}`, draft_data:draft, notes}) },10000);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (msgEl) { msgEl.style.color = 'var(--success)'; msgEl.textContent = `✅ Envoyé à ${toName}!`; }
+        setTimeout(() => _q('dosSendModal')?.remove(), 1800);
+    } catch(e) {
+        if (msgEl) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = `Erreur: ${e.message}`; }
+        if (btn) btn.disabled = false;
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HANDOFF — POLLING + POPUP (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
-window.startDossierHandoffPolling=function(){
-    if(window._dosPoll)clearInterval(window._dosPoll);
-    window._dosPoll=setInterval(_chkPending,60000);
+window.startDossierHandoffPolling = function() {
+    if (window._dosPoll) clearInterval(window._dosPoll);
+    window._dosPoll = setInterval(_chkPending, 60000);
     _chkPending();
 };
-window.stopDossierHandoffPolling=function(){clearInterval(window._dosPoll);window._dosPoll=null;};
+window.stopDossierHandoffPolling = function() { clearInterval(window._dosPoll); window._dosPoll = null; };
 
-async function _chkPending(force=false){
-    if(!window.S?.currentUser?.access_token)return;
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/pending`,
-            {headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`}},8000);
-        if(!r.ok)return;
-        const data=await r.json(),hs=data.handoffs||[];
-        window.S.pendingDossierCount=hs.length;
+async function _chkPending(force=false) {
+    if (!window.S?.currentUser?.access_token) return;
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/pending`,
+            { headers:{'Authorization':`Bearer ${window.S.currentUser.access_token}`} },8000);
+        if (!r.ok) return;
+        const data = await r.json(), hs = data.handoffs || [];
+        window.S.pendingDossierCount = hs.length;
         window.updateAlertBadge?.();
-        if(hs.length>0&&(force||!window._dosShownOnLogin)){window._dosShownOnLogin=true;_showPopup(hs);}
-    }catch(_){}
+        if (hs.length>0 && (force||!window._dosShownOnLogin)) { window._dosShownOnLogin=true; _showPopup(hs); }
+    } catch(_) {}
 }
 
-function _showPopup(handoffs){
+function _showPopup(handoffs) {
     _q('dosHoOverlay')?.remove();
-    const ov=document.createElement('div');ov.id='dosHoOverlay';
-    ov.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
-    const box=document.createElement('div');
-    box.style.cssText='background:var(--bg-card);border-radius:14px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);border:1px solid var(--border);';
-    box.innerHTML=`
-        <div style="font-weight:700;font-size:.95rem;margin-bottom:14px;color:var(--text-main);">
-            📄 Dossier entrant${handoffs.length>1?'s':''}</div>
-        ${handoffs.map(h=>`
+    const ov = document.createElement('div'); ov.id = 'dosHoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-card);border-radius:14px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);border:1px solid var(--border);';
+    box.innerHTML = `
+        <div style="font-weight:700;font-size:.95rem;margin-bottom:14px;color:var(--text-main);">📄 Dossier entrant${handoffs.length>1?'s':''}</div>
+        ${handoffs.map(h => `
         <div id="dos-ho-${h.id}" style="background:var(--bg-elevated);border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid var(--border);">
-            <div style="font-weight:700;font-size:.85rem;color:var(--text-main);margin-bottom:4px;">
-                <strong style="color:var(--accent);">${window.escapeHtml(h.from_username)}</strong> vous a envoyé un Dossier</div>
-            <div style="font-size:.75rem;color:var(--text-soft);margin-bottom:8px;">
-                🚢 ${window.escapeHtml(h.vessel_name||'IMO '+h.imo)} · IMO ${h.imo}</div>
+            <div style="font-weight:700;font-size:.85rem;color:var(--text-main);margin-bottom:4px;"><strong style="color:var(--accent);">${window.escapeHtml(h.from_username)}</strong> vous a envoyé un Dossier</div>
+            <div style="font-size:.75rem;color:var(--text-soft);margin-bottom:8px;">🚢 ${window.escapeHtml(h.vessel_name||'IMO '+h.imo)} · IMO ${h.imo}</div>
             ${h.notes?`<div style="font-size:.75rem;color:var(--text-soft);margin-bottom:8px;font-style:italic;">"${window.escapeHtml(h.notes)}"</div>`:''}
             <div style="display:flex;gap:8px;">
-                <button class="btn-primary" style="flex:1;padding:6px;font-size:.78rem;"
-                    onclick="window._dosRespond('${h.id}','${h.imo}','accept','${encodeURIComponent(JSON.stringify(h.draft_data))}')">✅ Accepter</button>
-                <button class="btn-ghost" style="flex:1;padding:6px;font-size:.78rem;color:var(--danger);"
-                    onclick="window._dosRespond('${h.id}','${h.imo}','decline',null)">✕ Refuser</button>
+                <button class="btn-primary" style="flex:1;padding:6px;font-size:.78rem;" onclick="window._dosRespond('${h.id}','${h.imo}','accept','${encodeURIComponent(JSON.stringify(h.draft_data))}')">✅ Accepter</button>
+                <button class="btn-ghost" style="flex:1;padding:6px;font-size:.78rem;color:var(--danger);" onclick="window._dosRespond('${h.id}','${h.imo}','decline',null)">✕ Refuser</button>
             </div>
         </div>`).join('')}
         <button onclick="document.getElementById('dosHoOverlay')?.remove()" class="btn-ghost" style="width:100%;margin-top:4px;padding:8px;font-size:.78rem;">Fermer</button>`;
-    ov.appendChild(box);document.body.appendChild(ov);
-    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
 }
 
-window._dosRespond=async function(hoId,imo,action,draftEnc){
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
-            {method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
-            body:JSON.stringify({handoff_id:hoId,action})},10000);
-        if(!r.ok)throw new Error(`HTTP ${r.status}`);
+window._dosRespond = async function(hoId, imo, action, draftEnc) {
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/handoff/respond`,
+            { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${window.S.currentUser.access_token}`},
+              body:JSON.stringify({handoff_id:hoId, action}) },10000);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         _q(`dos-ho-${hoId}`)?.remove();
-        if(action==='accept'&&draftEnc){
-            const draft=JSON.parse(decodeURIComponent(draftEnc));
-            localStorage.setItem(_dk(imo),JSON.stringify(draft));
+        if (action==='accept' && draftEnc) {
+            const draft = JSON.parse(decodeURIComponent(draftEnc));
+            localStorage.setItem(_dk(imo), JSON.stringify(draft));
             window.showToast('📄 Dossier accepté — brouillon sauvegardé','success',4000);
-            if(!window.S?.trackedImosCache?.includes(imo)&&window.addVesselByIMO)
+            if (!window.S?.trackedImosCache?.includes(imo) && window.addVesselByIMO)
                 window.addVesselByIMO(imo).catch(()=>{});
-        }else window.showToast('Dossier refusé','info',3000);
-        window.S.pendingDossierCount=Math.max(0,(window.S.pendingDossierCount||1)-1);
+        } else window.showToast('Dossier refusé','info',3000);
+        window.S.pendingDossierCount = Math.max(0, (window.S.pendingDossierCount||1)-1);
         window.updateAlertBadge?.();
-        if(!document.querySelector('[id^="dos-ho-"]'))_q('dosHoOverlay')?.remove();
-    }catch(e){window.showToast(`Erreur: ${e.message}`,'danger');}
+        if (!document.querySelector('[id^="dos-ho-"]')) _q('dosHoOverlay')?.remove();
+    } catch(e) { window.showToast(`Erreur: ${e.message}`,'danger'); }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REALTIME (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
-window.startDossierRealtimeListener=function(){
-    if(!window.S?.currentUser)return;
-    if(window._dosChannel){window.supabaseClient?.removeChannel(window._dosChannel);window._dosChannel=null;}
-    try{
-        if(!window.supabaseClient){
-            if(typeof supabase==='undefined')return;
-            window.supabaseClient=supabase.createClient('https://rpzcphszvdgjsqnhwdhm.supabase.co','sb_publishable_DXgi3J0tJyM1azdSzGycFQ_l2hsut64');
+window.startDossierRealtimeListener = function() {
+    if (!window.S?.currentUser) return;
+    if (window._dosChannel) { window.supabaseClient?.removeChannel(window._dosChannel); window._dosChannel = null; }
+    try {
+        if (!window.supabaseClient) {
+            if (typeof supabase === 'undefined') return;
+            window.supabaseClient = supabase.createClient('https://rpzcphszvdgjsqnhwdhm.supabase.co','sb_publishable_DXgi3J0tJyM1azdSzGycFQ_l2hsut64');
         }
-        const ch=window.supabaseClient.channel(`dossier-${window.S.currentUser.user_id}`);
-        window._dosChannel=ch;
-        ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'dossier_handoffs',
-            filter:`to_user_id=eq.${window.S.currentUser.user_id}`},payload=>{
-            const h=payload.new;
+        const ch = window.supabaseClient.channel(`dossier-${window.S.currentUser.user_id}`);
+        window._dosChannel = ch;
+        ch.on('postgres_changes', { event:'INSERT', schema:'public', table:'dossier_handoffs', filter:`to_user_id=eq.${window.S.currentUser.user_id}` }, payload => {
+            const h = payload.new;
             window.showToast(`📄 Dossier de ${h.from_username||'un collègue'} — IMO ${h.imo}`,'success',8000);
-            window.S.pendingDossierCount=(window.S.pendingDossierCount||0)+1;
+            window.S.pendingDossierCount = (window.S.pendingDossierCount||0) + 1;
             window.updateAlertBadge?.();
             _chkPending(true);
         });
-        ch.subscribe(s=>console.log('[DOSSIER REALTIME]',s));
-    }catch(e){console.error('[DOSSIER REALTIME]',e);}
+        ch.subscribe(s => console.log('[DOSSIER REALTIME]', s));
+    } catch(e) { console.error('[DOSSIER REALTIME]', e); }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GENERATE (unchanged)
-// ─────────────────────────────────────────────────────────────────────────────
-window._dosGenerate=async function(imo){
-    const data=_collect(imo);
-    if(!data.port){window.showToast('Sélectionnez un port','warning');return;}
-    if(!data.templates.length){window.showToast('Sélectionnez au moins un document','warning');return;}
-    const btn=_q('dos-gen-btn'),msg=_q('dos-msg');
-    if(btn){btn.disabled=true;btn.textContent='⏳...';}
-    if(msg){msg.style.color='var(--text-soft)';msg.textContent='Génération...';}
-    let dots=0;
-    const anim=setInterval(()=>{
-        dots=(dots%3)+1;const m=_q('dos-msg');
-        if(m&&m.textContent.includes('ération'))m.textContent='Génération'+'.'.repeat(dots);
-    },500);
-    try{
-        const r=await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/generate`,
-            {method:'POST',headers:{'Content-Type':'application/json',
-            ...(window.S.currentUser?.access_token?{'Authorization':`Bearer ${window.S.currentUser.access_token}`}:{})},
-            body:JSON.stringify(data)},120000);
-        if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||`Erreur ${r.status}`);}
-        const blob=await r.blob();
-        const fn=`DOSSIER_${(data.vessel_name||'VESSEL').replace(/\s+/g,'_').toUpperCase()}_${data.port.toUpperCase()}_${_td().replace(/-/g,'')}.zip`;
-        const url=URL.createObjectURL(blob);
-        const a=document.createElement('a');a.href=url;a.download=fn;
-        document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-        if(msg){msg.style.color='var(--success)';msg.textContent='✅ Téléchargé!';}
-    }catch(e){
+window._dosGenerate = async function(imo) {
+    const data = _collect(imo);
+    if (!data.port) { window.showToast('Sélectionnez un port','warning'); return; }
+    if (!data.templates.length) { window.showToast('Sélectionnez au moins un document','warning'); return; }
+    const btn = _q('dos-gen-btn'), msg = _q('dos-msg');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+    if (msg) { msg.style.color = 'var(--text-soft)'; msg.textContent = 'Génération...'; }
+    let dots = 0;
+    const anim = setInterval(() => {
+        dots = (dots%3)+1; const m = _q('dos-msg');
+        if (m && m.textContent.includes('ération')) m.textContent = 'Génération' + '.'.repeat(dots);
+    }, 500);
+    try {
+        const r = await window.fetchWithTimeout(`${window.CONFIG.WORKER_URL}/dossier/generate`,
+            { method:'POST', headers:{'Content-Type':'application/json',
+              ...(window.S.currentUser?.access_token ? {'Authorization':`Bearer ${window.S.currentUser.access_token}`} : {}) },
+              body:JSON.stringify(data) }, 120000);
+        if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || `Erreur ${r.status}`); }
+        const blob = await r.blob();
+        const fn = `DOSSIER_${(data.vessel_name||'VESSEL').replace(/\s+/g,'_').toUpperCase()}_${data.port.toUpperCase()}_${_td().replace(/-/g,'')}.zip`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = fn;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        if (msg) { msg.style.color = 'var(--success)'; msg.textContent = '✅ Téléchargé!'; }
+    } catch(e) {
         clearInterval(anim);
-        if(msg){msg.style.color='var(--danger)';msg.textContent=`❌ ${e.message}`;}
-        console.error('[DOSSIER GENERATE]',e);
+        if (msg) { msg.style.color = 'var(--danger)'; msg.textContent = `❌ ${e.message}`; }
+        console.error('[DOSSIER GENERATE]', e);
     }
     clearInterval(anim);
-    if(btn){btn.disabled=false;btn.textContent='📥 ZIP';}
-    setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},4000);
+    if (btn) { btn.disabled = false; btn.textContent = '📥 ZIP'; }
+    setTimeout(() => { const m = _q('dos-msg'); if (m) m.textContent = ''; }, 4000);
 };
 
-// AUTO-START
-(function(){
+// Auto‑start
+(function() {
     window.startDossierHandoffPolling = function() {
-        if(window._dosPoll) clearInterval(window._dosPoll);
+        if (window._dosPoll) clearInterval(window._dosPoll);
         window._dosPoll = setInterval(_chkPending, 60000);
         _chkPending();
     };
     window.stopDossierHandoffPolling = function() {
         clearInterval(window._dosPoll); window._dosPoll = null;
     };
-    if(window.S?.currentUser?.access_token){
+    if (window.S?.currentUser?.access_token) {
         window.startDossierRealtimeListener();
         window.startDossierHandoffPolling();
         console.log('[DOSSIER] Started.');
