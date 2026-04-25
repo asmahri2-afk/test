@@ -653,14 +653,25 @@ window._dosGenerate=async function(imo){
     setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},4000);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AUTO-START for returning users (session restored before dossier.js loaded)
-// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-START: call the real functions directly now that dossier.js is loaded.
+// _dosEagerLoad() in app.js already loaded this file; now wire up the real functions.
 (function(){
+    // Re-register the real functions so future calls bypass the stubs
+    window.startDossierHandoffPolling  = function() {
+        if(window._dosPoll)clearInterval(window._dosPoll);
+        window._dosPoll=setInterval(_chkPending,60000);
+        _chkPending();
+    };
+    window.stopDossierHandoffPolling   = function() {
+        clearInterval(window._dosPoll); window._dosPoll=null;
+    };
+    window.startDossierRealtimeListener = startDossierRealtimeListener;
+
+    // Start now if user is logged in
     if(window.S?.currentUser?.access_token){
         window.startDossierRealtimeListener();
         window.startDossierHandoffPolling();
-        console.log('[DOSSIER] Auto-started for restored session.');
+        console.log('[DOSSIER] Started.');
     }
 })();
 
