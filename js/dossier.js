@@ -93,7 +93,7 @@ function _mload()    { try{return JSON.parse(localStorage.getItem('dossier_mem')
 function _msave(obj) { localStorage.setItem('dossier_mem',JSON.stringify({..._mload(),...obj})); }
 
 // ============================================================
-// CSS (includes polished cargo‑row styles)
+// CSS
 // ============================================================
 function _css() {
     if (_q('dossier-css')) return;
@@ -218,7 +218,16 @@ window.openDossier = function(imo) {
                 <button type="button" class="remove-cargo" style="visibility:hidden;">✕</button>
             </div>
         </div>
-        <button id="add-cargo-btn" type="button" class="btn-ghost" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:.75rem;">+ Ajouter une cargaison</button>
+        <button id="add-cargo-btn" type="button" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:.75rem; margin-top:4px;">+ Ajouter une cargaison</button>
+
+        <!-- RESTORED FIELDS: Shipper, Notify, From, To, BC -->
+        <div class="dg2" style="margin-top:16px;">
+            <div class="dr"><label class="dl">Chargeur (Shipper)</label><input id="dos-shipper" class="di" type="text" placeholder="Shipper" value="${window.escapeHtml(mem.shipper||'')}"></div>
+            <div class="dr"><label class="dl">Notify Party</label><input id="dos-notify" class="di" type="text" placeholder="Notify" value="${window.escapeHtml(mem.notify||'')}"></div>
+            <div class="dr"><label class="dl">De (From)</label><input id="dos-from" class="di" type="text" placeholder="Port d'origine" value="${window.escapeHtml(mem.from||'')}"></div>
+            <div class="dr"><label class="dl">À (To)</label><input id="dos-to" class="di" type="text" placeholder="Port destination" value="${window.escapeHtml(mem.to||'')}"></div>
+            <div class="dr"><label class="dl">N° Bon de Commande (BC)</label><input id="dos-bc" class="di" type="text" placeholder="Numéro BC" value="${window.escapeHtml(mem.bc||'')}"></div>
+        </div>
 
         <div class="ds">Dates</div>
         <div class="dg2">
