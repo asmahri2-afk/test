@@ -1483,6 +1483,7 @@ window.renderVessels = function(tracked) {
                     <div class="vessel-footer-actions">
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openSOF('${imo}')">📋 SOF</button>
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openPortCallsEditor('${imo}', '${(v.name || imo).replace(/'/g, "\\'")}')"> 📍 Ports </button>
+                        <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();window._dosLazy('${imo}')">📄 Dossier</button>
                         <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? i18n.get('priorityBtn') : i18n.get('flagBtn')}</button>
                         <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;min-width:28px;" onclick="event.stopPropagation();removeIMO('${imo}')" title="${i18n.get('remove')}">✕</button>
                     </div>
