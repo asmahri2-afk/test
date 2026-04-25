@@ -656,16 +656,16 @@ window._dosGenerate=async function(imo){
 // AUTO-START: call the real functions directly now that dossier.js is loaded.
 // _dosEagerLoad() in app.js already loaded this file; now wire up the real functions.
 (function(){
-    // Re-register the real functions so future calls bypass the stubs
-    window.startDossierHandoffPolling  = function() {
-        if(window._dosPoll)clearInterval(window._dosPoll);
-        window._dosPoll=setInterval(_chkPending,60000);
+    // Re-register the real polling function so future calls bypass the app.js stub
+    window.startDossierHandoffPolling = function() {
+        if(window._dosPoll) clearInterval(window._dosPoll);
+        window._dosPoll = setInterval(_chkPending, 60000);
         _chkPending();
     };
-    window.stopDossierHandoffPolling   = function() {
-        clearInterval(window._dosPoll); window._dosPoll=null;
+    window.stopDossierHandoffPolling = function() {
+        clearInterval(window._dosPoll); window._dosPoll = null;
     };
-    window.startDossierRealtimeListener = startDossierRealtimeListener;
+    // startDossierRealtimeListener is already defined on window above — no reassignment needed
 
     // Start now if user is logged in
     if(window.S?.currentUser?.access_token){
