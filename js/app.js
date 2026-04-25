@@ -1483,7 +1483,6 @@ window.renderVessels = function(tracked) {
                     <div class="vessel-footer-actions">
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openSOF('${imo}')">📋 SOF</button>
                         <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();openPortCallsEditor('${imo}', '${(v.name || imo).replace(/'/g, "\\'")}')"> 📍 Ports </button>
-                        <button class="btn-ghost" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();window._dosLazy('${imo}')">📄 Dossier</button>
                         <button class="${prio ? 'btn-urgent' : 'btn-ghost'}" style="padding:5px 9px;font-size:.68rem;" onclick="event.stopPropagation();togglePriority('${imo}')">${prio ? i18n.get('priorityBtn') : i18n.get('flagBtn')}</button>
                         <button class="btn-danger" style="padding:5px 9px;font-size:.68rem;min-width:28px;" onclick="event.stopPropagation();removeIMO('${imo}')" title="${i18n.get('remove')}">✕</button>
                     </div>
@@ -2123,10 +2122,25 @@ window._dosLazy = function(imo) {
     s.onerror = () => window.showToast('Erreur chargement Dossier', 'danger');
     document.head.appendChild(s);
 };
-// Stubs so auth.js login/logout can call these before dossier.js loads
-window.startDossierHandoffPolling  = function() {};
-window.stopDossierHandoffPolling   = function() {};
-window.startDossierRealtimeListener = function() {};
+// Stubs that eagerly load dossier.js in the background when called,
+// so realtime + polling start immediately after login even if the
+// user has never clicked the Dossier button.
+function _dosEagerLoad(thenCall) {
+    if (window.openDossier) { if (thenCall) thenCall(); return; }
+    const s = document.createElement('script');
+    s.src = 'js/dossier.js?v=1';
+    s.onload = () => { if (thenCall) thenCall(); };
+    document.head.appendChild(s);
+}
+window.startDossierHandoffPolling = function() {
+    _dosEagerLoad(() => { if (window.startDossierHandoffPolling) window.startDossierHandoffPolling(); });
+};
+window.stopDossierHandoffPolling = function() {
+    if (window._dosPoll) { clearInterval(window._dosPoll); window._dosPoll = null; }
+};
+window.startDossierRealtimeListener = function() {
+    _dosEagerLoad(() => { if (window.startDossierRealtimeListener) window.startDossierRealtimeListener(); });
+};
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', window.init);
