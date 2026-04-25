@@ -230,10 +230,10 @@ window.openDossier = function(imo) {
 
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;position:sticky;bottom:0;background:var(--bg-card);">
         <span id="dos-msg" style="font-size:.72rem;color:var(--success);flex:1;"></span>
-        <button onclick="window._dosSend('${imo}')"   class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;">📤</button>
-        <button onclick="window._dosClear('${imo}')"  class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;color:var(--danger);border-color:rgba(239,68,68,.3);">🗑</button>
-        <button onclick="window._dosSaveDraft('${imo}')" class="btn-ghost" style="padding:8px 14px;font-size:.78rem;" title="Sauvegarder">💾</button>
-        <button onclick="window._dosGenerate('${imo}')" class="btn-primary" id="dos-gen-btn" style="padding:8px 14px;font-size:.78rem;" title="Télécharger ZIP">📥</button>
+        <button onclick="window._dosSend('${imo}')"   class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;" title="Envoyer">📤</button>
+        <button onclick="window._dosClear('${imo}')"  class="btn-ghost"   style="padding:8px 14px;font-size:.78rem;color:var(--danger);border-color:rgba(239,68,68,.3);" title="Effacer">🗑</button>
+        <button onclick="window._dosSaveDraft('${imo}')" class="btn-ghost" style="padding:8px 14px;font-size:.78rem;" title="Sauvegarder">💾 Save</button>
+        <button onclick="window._dosGenerate('${imo}')" class="btn-primary" id="dos-gen-btn" style="padding:8px 14px;font-size:.78rem;" title="Télécharger ZIP">📥 ZIP</button>
     </div>`;
 
     document.body.appendChild(ov);
@@ -649,7 +649,7 @@ window._dosGenerate=async function(imo){
         console.error('[DOSSIER GENERATE]',e);
     }
     clearInterval(anim);
-    if(btn){btn.disabled=false;btn.textContent='📥 Download';}
+    if(btn){btn.disabled=false;btn.textContent='📥 ZIP';}
     setTimeout(()=>{const m=_q('dos-msg');if(m)m.textContent='';},4000);
 };
 
