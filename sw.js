@@ -42,34 +42,38 @@ const FALLBACK_TITLE = '🚢 VesselTracker';
 //   { title, body, icon?, badge?, tag?, url?, imo?, type? }
 // ─────────────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
+    console.log('[SW] Push Received'); // Visible in sw-internals console
     let payload = {};
+    
     try {
         payload = event.data ? event.data.json() : {};
-    } catch (_) {
-        // Plain-text fallback (shouldn't happen with our worker)
-        payload = { title: FALLBACK_TITLE, body: event.data?.text() || 'New vessel update' };
+        console.log('[SW] Payload:', payload);
+    } catch (e) {
+        console.error('[SW] JSON Parse Error:', e);
+        payload = { title: FALLBACK_TITLE, body: event.data?.text() || 'New Update' };
     }
 
     const title = payload.title || FALLBACK_TITLE;
+    
+    // Ensure title and body are NEVER null/undefined for Windows compatibility
     const options = {
-        body:    payload.body  || '',
-        icon:    payload.icon  || DEFAULT_ICON,
-        badge:   payload.badge || DEFAULT_BADGE,
-        // Same-vessel events replace each other (no stacking spam).
-        // Different vessels = different tags = stack normally.
-        tag:     payload.tag   || `vt-${Date.now()}`,
-        renotify: true,                       // vibrate even if tag matches
-        requireInteraction: false,            // auto-dismiss after a few seconds
-        vibrate: [180, 80, 180],              // Android only — iOS ignores silently
+        body: String(payload.body || 'Vessel update received'),
+        icon: payload.icon ? new URL(payload.icon, self.location.origin).href : DEFAULT_ICON,
+        badge: payload.badge ? new URL(payload.badge, self.location.origin).href : DEFAULT_BADGE,
+        tag: String(payload.tag || `vt-${Date.now()}`),
+        renotify: true,
+        requireInteraction: false,
         data: {
-            url:  payload.url  || '/',
-            imo:  payload.imo  || null,
-            type: payload.type || 'info',
-            ts:   Date.now()
+            url: payload.url || '/',
+            imo: payload.imo || null
         }
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(
+        self.registration.showNotification(title, options)
+            .then(() => console.log('[SW] Notification shown'))
+            .catch(err => console.error('[SW] showNotification failed:', err))
+    );
 });
 
 // ─────────────────────────────────────────────────────────────────
