@@ -33,7 +33,7 @@ self.addEventListener('fetch', (e) => {
 // live elsewhere. If a file is missing the notification still shows,
 // just without an icon.
 const DEFAULT_ICON   = 'icon-192.png';
-const DEFAULT_BADGE  = 'icon-72.png';
+const DEFAULT_BADGE  = 'icon-512.png';
 const FALLBACK_TITLE = '🚢 VesselTracker';
 
 // ─────────────────────────────────────────────────────────────────
