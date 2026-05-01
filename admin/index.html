@@ -197,7 +197,7 @@
             var trackingUsers = allVessels.reduce(function(acc, v) { return acc + (v.tracking_users ? v.tracking_users.length : 0); }, 0);
             cnt.innerHTML = '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
                 '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+totalVessels+'</div><div style="font-size:.65rem;color:var(--text-soft);">Total Vessels</div></div>' +
-                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.65rem;color:var(--text-soft);">User-Vessel Tracking</div></div>' +
+                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.65rem;color:var(--text-soft);">User-Vessel Trackings</div></div>' +
                 '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+allUsers.length+'</div><div style="font-size:.65rem;color:var(--text-soft);">Users</div></div>' +
                 '</div>' +
                 '<div style="overflow-x:auto;">' +
@@ -215,13 +215,12 @@
                 }).join('') + '</tbody></table></div>' +
                 '<div style="margin-top:10px;"><button onclick="window._bulkRemove()" class="action-btn danger">🗑 Remove Selected</button></div>';
 
-            // bind global functions
             window._removeGlobal = async function(imo) {
                 if (!confirm('Remove IMO ' + imo + ' from ALL users?')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ imos: [imo] })
+                        body: JSON.stringify({ admin_token: token, imos: [imo] })
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('IMO ' + imo + ' removed', 'success');
@@ -237,7 +236,7 @@
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ imos: imos })
+                        body: JSON.stringify({ admin_token: token, imos: imos })
                     }, 20000);
                     if (!res.ok) throw new Error('Failed');
                     showToast(imos.length + ' vessel(s) removed', 'success');
@@ -270,7 +269,7 @@
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-add', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ user_id: userId, imos: imos })
+                        body: JSON.stringify({ admin_token: token, user_id: userId, imos: imos })
                     }, 30000);
                     var data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Request failed');
@@ -308,8 +307,9 @@
                 if (!confirm((current?'Unfreeze':'Freeze')+' this user?')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ user_id: uid, is_frozen: !current })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ admin_token: token, user_id: uid, is_frozen: !current })
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('Status updated', 'success');
@@ -320,8 +320,9 @@
                 if (!confirm((current?'Ban':'Allow')+' adding vessels?')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ user_id: uid, can_add_vessels: !current })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ admin_token: token, user_id: uid, can_add_vessels: !current })
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('Status updated', 'success');
@@ -352,14 +353,16 @@
                 var pin = document.getElementById('euPin').value.trim();
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/update', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ user_id: uid, callmebot_phone: phone, callmebot_apikey: apikey, callmebot_enabled: cm })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ admin_token: token, user_id: uid, callmebot_phone: phone, callmebot_apikey: apikey, callmebot_enabled: cm })
                     });
                     if (!res.ok) throw new Error('Settings update failed');
                     if (pin && /^\d{4,6}$/.test(pin)) {
                         res = await api(window.CONFIG.WORKER_URL + '/admin/user/pin', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                            body: JSON.stringify({ user_id: uid, new_pin: pin })
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                            body: JSON.stringify({ admin_token: token, user_id: uid, new_pin: pin })
                         });
                         if (!res.ok) throw new Error('PIN reset failed');
                     }
@@ -372,8 +375,9 @@
                 if (!confirm('DELETE this user and all their tracked vessels? This cannot be undone.')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/delete', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ user_id: uid })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ admin_token: token, user_id: uid })
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('User deleted', 'success');
@@ -397,8 +401,9 @@
                 if (!name || !/^\d{4,6}$/.test(pin)) { showToast('Invalid username or PIN', 'warning'); return; }
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/create', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                        body: JSON.stringify({ username: name, pin: pin })
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ admin_token: token, username: name, pin: pin })
                     });
                     if (!res.ok) { var e = await res.json(); throw new Error(e.error||'Creation failed'); }
                     var m = document.getElementById('addUserModal'); if (m) m.remove();
