@@ -31,14 +31,12 @@
         <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
     </div>
 
-    <!-- Only load the CSS and minimal utilities; no auth.js needed! -->
     <script>
-        // 1. Read the token from the URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
+        // 1. Read token from URL
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
 
         if (!token) {
-            // No token in URL — show a login prompt
             document.getElementById('mainContent').innerHTML = `
                 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:1rem;">
                     <div style="font-size:2rem;">🔐</div>
@@ -52,48 +50,43 @@
                         Go to Login
                     </button>
                 </div>`;
-            throw new Error('No token'); // stop execution
+            throw new Error('STOP'); // prevent further execution
         }
 
-        // 2. Set up global state exactly as the dashboard expects
-        window.CONFIG = window.CONFIG || { WORKER_URL: '/api' };
-
-        window.S = window.S || {
-            currentUser: { access_token: token },
-            vesselsDataMap: new Map(),
-            trackedImosCache: []
+        // 2. Set up window globals that the dashboard expects
+        window.CONFIG = { WORKER_URL: '/api' };
+        window.S = {
+            currentUser: { access_token: token }
         };
 
-        // 3. Minimal required helpers
-        window.escapeHtml = function(str) {
-            if (!str) return '';
-            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        // Minimal utilities (same as app.js)
+        window.escapeHtml = function(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         };
-
         window.validateIMO = function(imo) {
             if (!/^\d{7}$/.test(imo)) return false;
-            const digits = imo.split('').map(Number);
-            const check = digits.slice(0, 6).reduce((sum, d, i) => sum + d * (7 - i), 0) % 10;
-            return check === digits[6];
+            var digits = imo.split('').map(Number);
+            return digits[6] === digits.slice(0,6).reduce(function(s,d,i){ return s+d*(7-i); },0)%10;
         };
-
-        window.fetchWithTimeout = async function(url, options = {}, timeout = 8000) {
-            const ctrl = new AbortController();
-            const id = setTimeout(() => ctrl.abort(), timeout);
+        window.fetchWithTimeout = async function(url, options, timeout) {
+            timeout = timeout || 8000;
+            var ctrl = new AbortController();
+            var id = setTimeout(function(){ ctrl.abort(); }, timeout);
             try {
-                const r = await fetch(url, { ...options, signal: ctrl.signal });
+                var r = await fetch(url, Object.assign({}, options, { signal: ctrl.signal }));
                 clearTimeout(id);
                 return r;
             } catch(e) { clearTimeout(id); throw e; }
         };
 
-        // 4. Prepare the UI and load the dashboard script
+        // 3. Prepare UI and load dashboard
         document.getElementById('mainContent').innerHTML = `
             <div class="admin-tabs" id="tabs"></div>
             <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
         `;
 
-        const script = document.createElement('script');
+        var script = document.createElement('script');
         script.src = 'admin-dashboard.js';
         script.onerror = function() {
             document.getElementById('tabContent').innerHTML = '<p style="color:var(--danger);">Failed to load dashboard script.</p>';
