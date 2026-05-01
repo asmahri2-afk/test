@@ -17,10 +17,6 @@
         .action-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-soft); cursor: pointer; padding: 3px 8px; font-size: .68rem; margin: 0 2px; }
         .action-btn.danger { color: var(--danger); border-color: var(--danger); }
         .action-btn.success { color: var(--success); border-color: var(--success); }
-        .login-prompt {
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 60vh; text-align: center; gap: 1rem;
-        }
     </style>
 </head>
 <body>
@@ -30,43 +26,21 @@
             <button onclick="window.location.href='../'" class="action-btn">← Back to Tracker</button>
         </div>
         <div style="padding:0 16px;" id="mainContent">
-            <div style="padding:40px;text-align:center;color:var(--text-soft);">Checking session...</div>
+            <div style="padding:40px;text-align:center;color:var(--text-soft);">Initialising...</div>
         </div>
         <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
     </div>
 
-    <script src="../js/i18n.js"></script>
-    <script src="../js/auth.js"></script>
-
+    <!-- Only load the CSS and minimal utilities; no auth.js needed! -->
     <script>
-        (async function() {
-            // 1. Try to load session from cookie (auth.js already did this, but we re-check)
-            let session = window.loadSession();
-            
-            // 2. If no cookie session, try the URL query parameter ?token=
-            const urlParams = new URLSearchParams(window.location.search);
-            const tokenFromUrl = urlParams.get('token');
-            if (!session && tokenFromUrl) {
-                // Build a minimal session object so the dashboard can make API calls
-                session = {
-                    access_token: tokenFromUrl,
-                    username: 'admin',    // not used by dashboard, just a placeholder
-                    user_id: 'admin'
-                };
-                window.saveSession(session);   // save to cookie for subsequent reloads (optional)
-            }
+        // 1. Read the token from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
 
-            const mainContent = document.getElementById('mainContent');
-
-            if (session && session.access_token) {
-                window.S.currentUser = session;
-                initDashboard();
-                return;
-            }
-
-            // 3. Still no session – show login prompt
-            mainContent.innerHTML = `
-                <div class="login-prompt">
+        if (!token) {
+            // No token in URL — show a login prompt
+            document.getElementById('mainContent').innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:1rem;">
                     <div style="font-size:2rem;">🔐</div>
                     <h2 style="margin:0;">Login Required</h2>
                     <p style="color:var(--text-soft); max-width:300px;">
@@ -78,40 +52,53 @@
                         Go to Login
                     </button>
                 </div>`;
-        })();
-
-        function initDashboard() {
-            const mainContent = document.getElementById('mainContent');
-            mainContent.innerHTML = `
-                <div class="admin-tabs" id="tabs"></div>
-                <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
-            `;
-
-            // Inject required globals (same as before)
-            window.escapeHtml = window.escapeHtml || function(str) {
-                if (!str) return '';
-                return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-            };
-            window.validateIMO = window.validateIMO || function(imo) {
-                if (!/^\d{7}$/.test(imo)) return false;
-                const digits = imo.split('').map(Number);
-                const check = digits.slice(0, 6).reduce((sum, d, i) => sum + d * (7 - i), 0) % 10;
-                return check === digits[6];
-            };
-            window.fetchWithTimeout = window.fetchWithTimeout || async function(url, options = {}, timeout = 8000) {
-                const ctrl = new AbortController();
-                const id = setTimeout(() => ctrl.abort(), timeout);
-                try {
-                    const r = await fetch(url, { ...options, signal: ctrl.signal });
-                    clearTimeout(id);
-                    return r;
-                } catch(e) { clearTimeout(id); throw e; }
-            };
-
-            const script = document.createElement('script');
-            script.src = 'admin-dashboard.js';
-            document.head.appendChild(script);
+            throw new Error('No token'); // stop execution
         }
+
+        // 2. Set up global state exactly as the dashboard expects
+        window.CONFIG = window.CONFIG || { WORKER_URL: '/api' };
+
+        window.S = window.S || {
+            currentUser: { access_token: token },
+            vesselsDataMap: new Map(),
+            trackedImosCache: []
+        };
+
+        // 3. Minimal required helpers
+        window.escapeHtml = function(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        };
+
+        window.validateIMO = function(imo) {
+            if (!/^\d{7}$/.test(imo)) return false;
+            const digits = imo.split('').map(Number);
+            const check = digits.slice(0, 6).reduce((sum, d, i) => sum + d * (7 - i), 0) % 10;
+            return check === digits[6];
+        };
+
+        window.fetchWithTimeout = async function(url, options = {}, timeout = 8000) {
+            const ctrl = new AbortController();
+            const id = setTimeout(() => ctrl.abort(), timeout);
+            try {
+                const r = await fetch(url, { ...options, signal: ctrl.signal });
+                clearTimeout(id);
+                return r;
+            } catch(e) { clearTimeout(id); throw e; }
+        };
+
+        // 4. Prepare the UI and load the dashboard script
+        document.getElementById('mainContent').innerHTML = `
+            <div class="admin-tabs" id="tabs"></div>
+            <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
+        `;
+
+        const script = document.createElement('script');
+        script.src = 'admin-dashboard.js';
+        script.onerror = function() {
+            document.getElementById('tabContent').innerHTML = '<p style="color:var(--danger);">Failed to load dashboard script.</p>';
+        };
+        document.head.appendChild(script);
     </script>
 </body>
 </html>
