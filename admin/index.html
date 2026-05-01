@@ -30,77 +30,64 @@
             <button onclick="window.location.href='../'" class="action-btn">← Back to Tracker</button>
         </div>
         <div style="padding:0 16px;" id="mainContent">
-            <!-- Placeholder until auth check completes -->
             <div style="padding:40px;text-align:center;color:var(--text-soft);">Checking session...</div>
         </div>
         <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
     </div>
 
-    <!-- Required dependencies -->
     <script src="../js/i18n.js"></script>
     <script src="../js/auth.js"></script>
 
-    <!-- Bootstrap script – wait for session, then load dashboard -->
     <script>
         (async function() {
-            // Ensure auth.js has finished its synchronous setup (loadSession, etc.)
-            // If session cookie exists, loadSession already ran during auth.js init.
-            // But we'll double-check explicitly.
-            const session = window.loadSession(); // call it again to be safe
+            // 1. Try to load session from cookie (auth.js already did this, but we re-check)
+            let session = window.loadSession();
+            
+            // 2. If no cookie session, try the URL query parameter ?token=
+            const urlParams = new URLSearchParams(window.location.search);
+            const tokenFromUrl = urlParams.get('token');
+            if (!session && tokenFromUrl) {
+                // Build a minimal session object so the dashboard can make API calls
+                session = {
+                    access_token: tokenFromUrl,
+                    username: 'admin',    // not used by dashboard, just a placeholder
+                    user_id: 'admin'
+                };
+                window.saveSession(session);   // save to cookie for subsequent reloads (optional)
+            }
+
             const mainContent = document.getElementById('mainContent');
 
-            // Helper to show a login prompt if not authenticated
-            function showLoginPrompt() {
-                mainContent.innerHTML = `
-                    <div class="login-prompt">
-                        <div style="font-size:2rem;">🔐</div>
-                        <h2 style="margin:0;">Login Required</h2>
-                        <p style="color:var(--text-soft); max-width:300px;">
-                            You must be logged in to access the admin dashboard.
-                        </p>
-                        <button onclick="window.location.href='../?login'"
-                            style="padding:10px 24px;font-size:.9rem;border-radius:8px;
-                                   background:var(--accent);color:#fff;border:none;cursor:pointer;">
-                            Go to Login
-                        </button>
-                    </div>`;
-            }
-
-            // If already authenticated, proceed immediately
             if (session && session.access_token) {
-                window.S.currentUser = session; // ensure it's set
+                window.S.currentUser = session;
                 initDashboard();
                 return;
             }
 
-            // If not, wait a moment – sometimes auth.js's loadSession is called but S.currentUser not explicitly assigned
-            if (window.S && window.S.currentUser && window.S.currentUser.access_token) {
-                initDashboard();
-                return;
-            }
-
-            // Final attempt – wait 1.5s for any deferred session load (e.g. from an iframe or cookie change)
-            await new Promise(r => setTimeout(r, 1500));
-            const delayedSession = window.loadSession();
-            if ((delayedSession && delayedSession.access_token) || (window.S && window.S.currentUser && window.S.currentUser.access_token)) {
-                if (delayedSession) window.S.currentUser = delayedSession;
-                initDashboard();
-                return;
-            }
-
-            // Still no session – show prompt
-            showLoginPrompt();
+            // 3. Still no session – show login prompt
+            mainContent.innerHTML = `
+                <div class="login-prompt">
+                    <div style="font-size:2rem;">🔐</div>
+                    <h2 style="margin:0;">Login Required</h2>
+                    <p style="color:var(--text-soft); max-width:300px;">
+                        You must be logged in to access the admin dashboard.
+                    </p>
+                    <button onclick="window.location.href='../?login'"
+                        style="padding:10px 24px;font-size:.9rem;border-radius:8px;
+                               background:var(--accent);color:#fff;border:none;cursor:pointer;">
+                        Go to Login
+                    </button>
+                </div>`;
         })();
 
         function initDashboard() {
-            // Remove placeholder
             const mainContent = document.getElementById('mainContent');
             mainContent.innerHTML = `
                 <div class="admin-tabs" id="tabs"></div>
                 <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
             `;
 
-            // Inject required globals that the dashboard needs (but aren't in auth.js)
+            // Inject required globals (same as before)
             window.escapeHtml = window.escapeHtml || function(str) {
                 if (!str) return '';
                 return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -121,12 +108,8 @@
                 } catch(e) { clearTimeout(id); throw e; }
             };
 
-            // Now load the dashboard script
             const script = document.createElement('script');
             script.src = 'admin-dashboard.js';
-            script.onload = () => {
-                // The dashboard will auto-start once loaded
-            };
             document.head.appendChild(script);
         }
     </script>
