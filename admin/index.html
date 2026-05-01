@@ -27,41 +27,43 @@
         </div>
         <div style="padding:0 16px;">
             <div class="admin-tabs" id="tabs"></div>
-            <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
+            <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data…</div></div>
         </div>
         <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
     </div>
 
-    <!-- Load only what's needed -->
+    <!-- 1. Load internationalisation (same as main app) -->
     <script src="../js/i18n.js"></script>
+
+    <!-- 2. Load auth utilities (session from cookie, CONFIG, S, etc.) -->
+    <script src="../js/auth.js"></script>
+
+    <!-- 3. Minimal runtime to ensure everything the dashboard needs is available -->
     <script>
-        // Minimal global config & state (same as app.js but without init)
-        window.CONFIG = window.CONFIG || {
-            WORKER_URL: '/api',
-            STALE_THRESHOLD_MS: 6 * 3600000,
-            CRITICAL_THRESHOLD_MS: 24 * 3600000,
-            ARRIVED_THRESHOLD_NM: 30.0,
-            REFRESH_INTERVAL: 5 * 60000,
-        };
-        window.S = window.S || {
-            currentUser: null,
-            vesselsDataMap: new Map(),
-            trackedImosCache: [],
-        };
-        // Restore session
-        const storedSession = localStorage.getItem('vt_session');
-        if (storedSession) {
-            try {
-                const sess = JSON.parse(storedSession);
-                if (sess && sess.access_token) window.S.currentUser = sess;
-            } catch(e) {}
+        // Force session restoration from cookie (auth.js already provides loadSession)
+        const session = window.loadSession();
+        if (!session || !session.access_token) {
+            // Not logged in – redirect to main login
+            window.location.href = '../?login';
         }
-        // Critical utilities required by the dashboard
-        window.escapeHtml = (str) => {
+
+        // Define `escapeHtml` (same as app.js – needed by dashboard & admin.js)
+        window.escapeHtml = window.escapeHtml || function(str) {
             if (!str) return '';
             return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         };
-        window.fetchWithTimeout = async function(url, options = {}, timeout = 8000) {
+
+        // Define `validateIMO` – required for Bulk Add checksum validation
+        window.validateIMO = window.validateIMO || function(imo) {
+            if (!/^\d{7}$/.test(imo)) return false;
+            const digits = imo.split('').map(Number);
+            const check = digits.slice(0, 6).reduce((sum, d, i) => sum + d * (7 - i), 0) % 10;
+            return check === digits[6];
+        };
+
+        // Make sure `fetchWithTimeout` is available (already provided by auth.js? No, it's in app.js)
+        // We need to copy it here because our dashboard calls it.
+        window.fetchWithTimeout = window.fetchWithTimeout || async function(url, options = {}, timeout = 8000) {
             const ctrl = new AbortController();
             const id = setTimeout(() => ctrl.abort(), timeout);
             try {
@@ -70,11 +72,9 @@
                 return r;
             } catch(e) { clearTimeout(id); throw e; }
         };
-        // If no token, redirect to login
-        if (!window.S.currentUser || !window.S.currentUser.access_token) {
-            window.location.href = '../?login';
-        }
     </script>
+
+    <!-- 4. The full Pro Dashboard -->
     <script src="admin-dashboard.js"></script>
 </body>
 </html>
