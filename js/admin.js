@@ -84,7 +84,7 @@ window.loadAdminDashboard = async function() {
 
         // Full Dashboard button
         const fullDashboardBtn = `
-            <button onclick="window.open('admin/index.html','_blank')"
+            <button onclick="window.location.href='admin/index.html'"
                 style="width:100%;padding:10px;font-size:.8rem;font-weight:600;
                        background:var(--accent);color:#fff;border:none;border-radius:8px;
                        cursor:pointer;margin-bottom:12px;transition:opacity .15s;"
