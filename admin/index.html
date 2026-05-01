@@ -114,6 +114,51 @@
         .failures-row .imo  { font-weight: 600; color: var(--text-main); min-width: 70px; }
         .failures-row .name { flex: 1; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .failures-row .cnt  { color: var(--danger); font-weight: 600; }
+        /* Handoff tab */
+        .handoff-pill {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: .65rem; font-weight: 600; letter-spacing: .02em;
+        }
+        .handoff-pill.pending  { background: rgba(245,158,11,.18); color: var(--warning); border: 1px solid rgba(245,158,11,.4); }
+        .handoff-pill.accepted { background: rgba(16,185,129,.18); color: var(--success); border: 1px solid rgba(16,185,129,.4); }
+        .handoff-pill.declined { background: rgba(239,68,68,.18);  color: var(--danger);  border: 1px solid rgba(239,68,68,.4); }
+        .handoff-type {
+            display: inline-block; padding: 1px 7px; border-radius: 4px;
+            font-size: .62rem; font-weight: 700; letter-spacing: .04em;
+            background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-soft);
+        }
+        .handoff-type.sof     { color: #38bdf8; border-color: rgba(56,189,248,.4); }
+        .handoff-type.dossier { color: #c084fc; border-color: rgba(192,132,252,.4); }
+        .filter-chip {
+            display: inline-block; padding: 4px 10px; border-radius: 16px;
+            border: 1px solid var(--border); background: var(--bg-elevated);
+            color: var(--text-soft); font-size: .7rem; cursor: pointer;
+            margin-right: 6px; margin-bottom: 6px; transition: all .12s;
+        }
+        .filter-chip:hover  { border-color: var(--accent); }
+        .filter-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .handoff-detail {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px;
+            font-size: .73rem; color: var(--text-main);
+            max-height: 60vh; overflow-y: auto;
+        }
+        .handoff-detail .kv { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+        .handoff-detail .kv:last-child { border-bottom: none; }
+        .handoff-detail .kv .k { font-weight: 600; color: var(--text-soft); min-width: 130px; }
+        .handoff-detail .kv .v { flex: 1; word-break: break-word; }
+        .handoff-detail pre {
+            background: var(--bg-card); border-radius: 4px; padding: 6px 8px;
+            font-size: .68rem; overflow-x: auto; color: var(--text-soft);
+            white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+        }
+        .handoff-detail .ops-table {
+            width: 100%; border-collapse: collapse; margin-top: 4px; font-size: .68rem;
+        }
+        .handoff-detail .ops-table th, .handoff-detail .ops-table td {
+            padding: 3px 6px; border: 1px solid var(--border); text-align: left;
+        }
+        .handoff-detail .ops-table th { background: var(--bg-card); color: var(--text-soft); }
     </style>
 </head>
 <body>
@@ -209,6 +254,9 @@
         var allUsers = [];
         var allVessels = [];
         var allFailures = [];     // [{ imo, count, name, trackers }]
+        var allHandoffs = [];     // [{ id, type, from_username, to_username, imo, vessel_name, status, created_at, responded_at, notes, ... }]
+        var handoffStats = null;  // { total, sof, dossier, pending, accepted, declined }
+        var handoffFilter = 'all'; // 'all' | 'sof' | 'dossier' | 'pending' | 'accepted' | 'declined'
         var serverTime = null;    // ISO string sent by /admin/full-data
         var currentTab = 'fleet';
 
@@ -227,6 +275,27 @@
                 : h < 24 ? Math.round(h) + 'h ago'
                 : Math.round(h / 24) + 'd ago';
             return { cls: cls, label: label, hoursAgo: h };
+        }
+
+        // Plain relative timestamp — "3h ago", "2d ago", "never". Used for
+        // last-login and handoff dates where we don't want a coloured dot.
+        function formatRelative(iso) {
+            if (!iso) return 'never';
+            var t = new Date(iso).getTime();
+            if (isNaN(t)) return '—';
+            var now = serverTime ? new Date(serverTime).getTime() : Date.now();
+            var diff = (now - t) / 1000;
+            if (diff < 60)         return Math.max(1, Math.round(diff)) + 's ago';
+            if (diff < 3600)       return Math.round(diff / 60) + 'm ago';
+            if (diff < 86400)      return Math.round(diff / 3600) + 'h ago';
+            if (diff < 86400 * 30) return Math.round(diff / 86400) + 'd ago';
+            return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+        }
+
+        function formatAbsolute(iso) {
+            if (!iso) return '—';
+            var d = new Date(iso); if (isNaN(d.getTime())) return '—';
+            return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
         }
 
         // ── API LOAD ─────────────────────────────────────────────────
@@ -280,6 +349,7 @@
             if (currentTab === 'fleet') renderFleetTab(cnt);
             else if (currentTab === 'bulk') renderBulkTab(cnt);
             else if (currentTab === 'users') renderUsersTab(cnt);
+            else if (currentTab === 'handoffs') renderHandoffsTab(cnt);
         }
 
         // ── FLEET TAB ────────────────────────────────────────────────
@@ -440,12 +510,16 @@
         // ── USERS TAB ────────────────────────────────────────────────
         function renderUsersTab(cnt) {
             cnt.innerHTML = '<button onclick="window._addUserModal()" class="btn btn-primary" style="margin-bottom:12px;">+ Add New User</button>' +
-                '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Username</th><th>Fleet</th><th>CallMeBot</th><th>Status</th><th>Actions</th></tr></thead>' +
+                '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Username</th><th>Last Login</th><th>Fleet</th><th>CallMeBot</th><th>Status</th><th>Actions</th></tr></thead>' +
                 '<tbody>' + allUsers.map(function(u) {
                     var badge = u.is_frozen ? '<span class="badge" style="background:rgba(239,68,68,.2);color:var(--danger);">Frozen</span>' :
                         (!u.can_add_vessels ? '<span class="badge" style="background:rgba(245,158,11,.2);color:var(--warning);">Ban Add</span>' : '<span class="badge" style="background:rgba(34,197,94,.2);color:var(--success);">Active</span>');
+                    var lastLoginCell = u.last_login_at
+                        ? '<span title="' + esc(formatAbsolute(u.last_login_at)) + '">' + esc(formatRelative(u.last_login_at)) + '</span>'
+                        : '<span style="color:var(--text-soft);opacity:.6;" title="Has not logged in since this column existed">never</span>';
                     return '<tr>' +
                         '<td>'+esc(u.username)+'</td>' +
+                        '<td>'+lastLoginCell+'</td>' +
                         '<td>'+(u.vessels ? u.vessels.length : 0)+'</td>' +
                         '<td>'+(u.callmebot_enabled ? 'ON' : 'OFF')+'</td>' +
                         '<td>'+badge+'</td>' +
@@ -577,13 +651,234 @@
             };
         }
 
+        // ── HANDOFFS TAB ─────────────────────────────────────────────
+        // Lazy-loads on first switch — handoff data is its own endpoint
+        // (/admin/handoffs) so it doesn't bloat the initial dashboard payload.
+        async function renderHandoffsTab(cnt) {
+            cnt.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-soft);">Loading handoffs…</div>';
+
+            // Always re-fetch when the tab is opened so the admin sees current state
+            try {
+                var res = await api(window.CONFIG.WORKER_URL + '/admin/handoffs',
+                    { headers: { Authorization: 'Bearer ' + token } }, 15000);
+                if (res.status === 401 || res.status === 403) {
+                    showLoginPrompt(res.status === 403 ? 'Forbidden' : 'Session Expired');
+                    return;
+                }
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                var data = await res.json();
+                allHandoffs  = data.handoffs || [];
+                handoffStats = data.stats || null;
+            } catch(e) {
+                cnt.innerHTML = '<div style="padding:20px;color:var(--danger);">Failed to load handoffs: ' + esc(e.message) + '</div>';
+                return;
+            }
+
+            paintHandoffs(cnt);
+        }
+
+        function paintHandoffs(cnt) {
+            var s = handoffStats || { total:0, sof:0, dossier:0, pending:0, accepted:0, declined:0 };
+
+            // Top stats row
+            var statsHtml = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;">'+s.total+'</div><div style="font-size:.62rem;color:var(--text-soft);">Total</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:#38bdf8;">'+s.sof+'</div><div style="font-size:.62rem;color:var(--text-soft);">SOF</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:#c084fc;">'+s.dossier+'</div><div style="font-size:.62rem;color:var(--text-soft);">Dossier</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:var(--warning);">'+s.pending+'</div><div style="font-size:.62rem;color:var(--text-soft);">Pending</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:var(--success);">'+s.accepted+'</div><div style="font-size:.62rem;color:var(--text-soft);">Accepted</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:var(--danger);">'+s.declined+'</div><div style="font-size:.62rem;color:var(--text-soft);">Declined</div></div>' +
+                '</div>';
+
+            // Filter chips — all / sof / dossier / pending / accepted / declined
+            var chips = [
+                { id: 'all',      label: 'All ('+s.total+')' },
+                { id: 'sof',      label: 'SOF ('+s.sof+')' },
+                { id: 'dossier',  label: 'Dossier ('+s.dossier+')' },
+                { id: 'pending',  label: 'Pending ('+s.pending+')' },
+                { id: 'accepted', label: 'Accepted ('+s.accepted+')' },
+                { id: 'declined', label: 'Declined ('+s.declined+')' }
+            ];
+            var chipsHtml = '<div style="margin-bottom:10px;">' +
+                chips.map(function(c){
+                    return '<button class="filter-chip ' + (handoffFilter === c.id ? 'active' : '') + '" '
+                         + 'onclick="window._setHandoffFilter(\'' + c.id + '\')">' + esc(c.label) + '</button>';
+                }).join('') +
+                '<button onclick="window._reloadHandoffs()" class="filter-chip" style="margin-left:auto;float:right;">🔄 Refresh</button>' +
+                '</div>';
+
+            // Apply filter
+            var filtered = allHandoffs.filter(function(h) {
+                if (handoffFilter === 'all') return true;
+                if (handoffFilter === 'sof' || handoffFilter === 'dossier') return h.type === handoffFilter;
+                return h.status === handoffFilter; // pending/accepted/declined
+            });
+
+            var tableHtml;
+            if (!filtered.length) {
+                tableHtml = '<div style="padding:30px;text-align:center;color:var(--text-soft);font-size:.78rem;">No handoffs match this filter.</div>';
+            } else {
+                tableHtml = '<div style="overflow-x:auto;">' +
+                    '<table class="admin-table"><thead><tr>' +
+                        '<th>Type</th><th>Date sent</th><th>From → To</th><th>Vessel</th>' +
+                        '<th>Status</th><th>Responded</th><th></th>' +
+                    '</tr></thead><tbody>' +
+                    filtered.map(function(h) {
+                        var notesAttr = h.notes ? ' title="' + esc(h.notes) + '"' : '';
+                        return '<tr' + notesAttr + '>' +
+                            '<td><span class="handoff-type ' + h.type + '">' + h.type.toUpperCase() + '</span></td>' +
+                            '<td><span title="' + esc(formatAbsolute(h.created_at)) + '">' + esc(formatRelative(h.created_at)) + '</span></td>' +
+                            '<td>' + esc(h.from_username || '?') + ' → <strong>' + esc(h.to_username || '?') + '</strong></td>' +
+                            '<td>' + esc(h.vessel_name || '') + ' <span style="color:var(--text-soft);">(' + esc(h.imo) + ')</span></td>' +
+                            '<td><span class="handoff-pill ' + h.status + '">' + h.status.toUpperCase() + '</span></td>' +
+                            '<td>' + (h.responded_at
+                                ? '<span title="' + esc(formatAbsolute(h.responded_at)) + '">' + esc(formatRelative(h.responded_at)) + '</span>'
+                                : '<span style="color:var(--text-soft);opacity:.5;">—</span>') + '</td>' +
+                            '<td><button onclick="window._viewHandoff(\'' + h.type + '\',' + h.id + ')" class="action-btn" title="View full content">👁 View</button></td>' +
+                        '</tr>';
+                    }).join('') +
+                    '</tbody></table></div>';
+            }
+
+            cnt.innerHTML = statsHtml + chipsHtml + tableHtml;
+        }
+
+        window._setHandoffFilter = function(id) {
+            handoffFilter = id;
+            paintHandoffs(document.getElementById('tabContent'));
+        };
+
+        window._reloadHandoffs = function() {
+            renderHandoffsTab(document.getElementById('tabContent'));
+        };
+
+        window._viewHandoff = async function(type, id) {
+            // Open modal placeholder immediately so the admin gets feedback
+            var existing = document.getElementById('handoffViewModal');
+            if (existing) existing.remove();
+            document.body.insertAdjacentHTML('beforeend',
+                '<div class="modal" id="handoffViewModal">' +
+                '<div class="modal-inner" style="max-width:640px;">' +
+                '<h3>Loading…</h3>' +
+                '<div class="handoff-detail" id="handoffDetailBody">'
+                + '<div style="padding:20px;text-align:center;color:var(--text-soft);">Fetching handoff…</div></div>' +
+                '<div style="margin-top:12px;text-align:right;">' +
+                '<button onclick="document.getElementById(\'handoffViewModal\').remove()" class="btn btn-secondary">Close</button>' +
+                '</div></div></div>');
+
+            try {
+                var res = await api(window.CONFIG.WORKER_URL + '/admin/handoff/' + type + '/' + id,
+                    { headers: { Authorization: 'Bearer ' + token } }, 10000);
+                if (!res.ok) {
+                    var err = await res.json().catch(function(){ return {}; });
+                    throw new Error(err.error || 'HTTP ' + res.status);
+                }
+                var data = await res.json();
+                var h = data.handoff;
+                var modal = document.getElementById('handoffViewModal');
+                if (!modal) return;
+
+                modal.querySelector('h3').innerHTML =
+                    '<span class="handoff-type ' + h.type + '">' + h.type.toUpperCase() + '</span> '
+                    + esc(h.vessel_name || ('IMO ' + h.imo))
+                    + ' <span class="handoff-pill ' + h.status + '" style="margin-left:6px;">' + h.status + '</span>';
+
+                document.getElementById('handoffDetailBody').innerHTML = renderHandoffDetail(h);
+            } catch(e) {
+                var body = document.getElementById('handoffDetailBody');
+                if (body) body.innerHTML = '<div style="color:var(--danger);padding:10px;">' + esc(e.message) + '</div>';
+            }
+        };
+
+        // Render the handoff body — generic for both SOF and dossier.
+        // SOF draft_data is a flat-ish object with the form fields the user
+        // had filled in; dossier has port/templates. We render top-level
+        // primitive keys as KV rows, arrays of objects as small tables, and
+        // anything else as a compact JSON dump.
+        function renderHandoffDetail(h) {
+            var meta = '';
+            meta += '<div class="kv"><div class="k">From</div><div class="v">'+esc(h.from_username||'?')+'</div></div>';
+            meta += '<div class="kv"><div class="k">To</div><div class="v">'+esc(h.to_username||'?')+'</div></div>';
+            meta += '<div class="kv"><div class="k">IMO</div><div class="v">'+esc(h.imo||'')+'</div></div>';
+            meta += '<div class="kv"><div class="k">Vessel</div><div class="v">'+esc(h.vessel_name||'')+'</div></div>';
+            meta += '<div class="kv"><div class="k">Sent</div><div class="v">'+esc(formatAbsolute(h.created_at))+' ('+esc(formatRelative(h.created_at))+')</div></div>';
+            if (h.responded_at) {
+                meta += '<div class="kv"><div class="k">Responded</div><div class="v">'+esc(formatAbsolute(h.responded_at))+' ('+esc(formatRelative(h.responded_at))+')</div></div>';
+            }
+            if (h.notes) {
+                meta += '<div class="kv"><div class="k">Notes</div><div class="v" style="white-space:pre-wrap;">'+esc(h.notes)+'</div></div>';
+            }
+
+            var dd = h.draft_data;
+            if (!dd || typeof dd !== 'object') {
+                return meta + '<div style="margin-top:10px;color:var(--text-soft);font-style:italic;">No draft data.</div>';
+            }
+
+            var body = '<div style="margin-top:12px;font-weight:600;color:var(--text-soft);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;">Draft contents</div>';
+            for (var key in dd) {
+                if (!Object.prototype.hasOwnProperty.call(dd, key)) continue;
+                var v = dd[key];
+                if (v === null || v === undefined || v === '') continue;
+                body += '<div class="kv"><div class="k">'+esc(key)+'</div><div class="v">'+renderHandoffValue(v)+'</div></div>';
+            }
+            return meta + body;
+        }
+
+        function renderHandoffValue(v) {
+            if (v === null || v === undefined) return '<span style="color:var(--text-soft);">—</span>';
+            if (typeof v === 'boolean') return v ? '✓ yes' : '✗ no';
+            if (typeof v === 'number')  return esc(String(v));
+            if (typeof v === 'string')  return esc(v).replace(/\n/g, '<br>');
+
+            if (Array.isArray(v)) {
+                if (!v.length) return '<span style="color:var(--text-soft);">empty</span>';
+                // Array of plain objects → compact table
+                if (typeof v[0] === 'object' && v[0] !== null && !Array.isArray(v[0])) {
+                    var keys = Array.from(v.reduce(function(acc, row){
+                        Object.keys(row || {}).forEach(function(k){ acc.add(k); });
+                        return acc;
+                    }, new Set()));
+                    if (keys.length && keys.length <= 8) {
+                        var html = '<table class="ops-table"><thead><tr>' +
+                            keys.map(function(k){ return '<th>'+esc(k)+'</th>'; }).join('') +
+                            '</tr></thead><tbody>' +
+                            v.map(function(row){
+                                return '<tr>' + keys.map(function(k){
+                                    var cell = row && row[k] != null ? row[k] : '';
+                                    return '<td>'+esc(typeof cell === 'object' ? JSON.stringify(cell) : String(cell))+'</td>';
+                                }).join('') + '</tr>';
+                            }).join('') +
+                            '</tbody></table>';
+                        return html;
+                    }
+                }
+                // Plain array (strings, numbers, mixed)
+                return v.map(function(item){
+                    return typeof item === 'object'
+                        ? '<code>'+esc(JSON.stringify(item))+'</code>'
+                        : esc(String(item));
+                }).join(', ');
+            }
+
+            // Object → JSON dump
+            try { return '<pre>'+esc(JSON.stringify(v, null, 2))+'</pre>'; }
+            catch(_) { return '<span style="color:var(--text-soft);">[unserialisable]</span>'; }
+        }
+
         // ── INIT ─────────────────────────────────────────────────────
         mainEl.innerHTML = '<div class="admin-tabs" id="tabs"></div><div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div></div>';
 
         var tabDefs = [
-            { id:'fleet', label:'🚢 Fleet Manager' },
-            { id:'bulk', label:'📥 Bulk Add' },
-            { id:'users', label:'👥 User Manager' }
+            { id:'fleet',    label:'🚢 Fleet Manager' },
+            { id:'bulk',     label:'📥 Bulk Add' },
+            { id:'users',    label:'👥 User Manager' },
+            { id:'handoffs', label:'📋 Handoffs' }
         ];
         var tabsEl = document.getElementById('tabs');
         tabDefs.forEach(function(t) {
