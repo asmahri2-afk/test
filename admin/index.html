@@ -84,6 +84,36 @@
             border-radius: 6px; padding: 6px 8px; color: var(--text-main); font-size: .78rem;
         }
         textarea { width: 100%; resize: vertical; }
+        /* Visual cues for the Fleet tab */
+        .sanc-badge {
+            display: inline-block; padding: 1px 6px; border-radius: 8px;
+            font-size: .6rem; font-weight: 700; letter-spacing: .03em;
+            background: rgba(255,69,0,.15); color: #ff6b35; border: 1px solid rgba(255,69,0,.4);
+            margin-left: 6px; vertical-align: middle;
+        }
+        .stale-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 6px; vertical-align: middle;
+        }
+        .stale-dot.fresh { background: var(--success); }
+        .stale-dot.warn  { background: var(--warning); }
+        .stale-dot.stale { background: var(--danger); }
+        .stale-dot.none  { background: var(--text-soft); opacity: .4; }
+        .failures-card {
+            background: var(--bg-elevated); border: 1px solid rgba(239,68,68,.25);
+            border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;
+        }
+        .failures-card .title {
+            font-weight: 700; font-size: .8rem; color: var(--danger); margin-bottom: 6px;
+        }
+        .failures-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 5px 0; border-bottom: 1px solid var(--border); font-size: .73rem;
+        }
+        .failures-row:last-child { border-bottom: none; }
+        .failures-row .imo  { font-weight: 600; color: var(--text-main); min-width: 70px; }
+        .failures-row .name { flex: 1; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .failures-row .cnt  { color: var(--danger); font-weight: 600; }
     </style>
 </head>
 <body>
@@ -101,12 +131,43 @@
     <script>
     (function() {
         // ── CONFIG & GLOBALS ─────────────────────────────────────────
-        var params = new URLSearchParams(window.location.search);
-        var token = params.get('token');
+        // Token is handed off via sessionStorage by admin.js (NOT in URL —
+        // URL params leak in browser history, server logs, and Referer headers).
+        // Backwards-compat: still accept ?token=… so existing bookmarks work,
+        // but immediately migrate it into sessionStorage and strip from URL.
+        var token = null;
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            var legacyToken = urlParams.get('token');
+            if (legacyToken) {
+                sessionStorage.setItem('vt_admin_token', legacyToken);
+                sessionStorage.setItem('vt_admin_token_ts', String(Date.now()));
+                // Strip token from the URL bar so it doesn't get bookmarked/shared
+                history.replaceState(null, '', window.location.pathname);
+            }
+            token = sessionStorage.getItem('vt_admin_token');
+            // Token expires after 1 hour of inactivity in this tab
+            var ts = parseInt(sessionStorage.getItem('vt_admin_token_ts') || '0', 10);
+            if (token && ts && Date.now() - ts > 60 * 60 * 1000) {
+                sessionStorage.removeItem('vt_admin_token');
+                sessionStorage.removeItem('vt_admin_token_ts');
+                token = null;
+            }
+        } catch(e) { console.error('sessionStorage error:', e); }
+
         var mainEl = document.getElementById('mainContent');
 
+        function showLoginPrompt(reason) {
+            mainEl.innerHTML = '<div class="login-prompt">'
+                + '<div style="font-size:2rem;">🔐</div>'
+                + '<h2>' + (reason || 'Login Required') + '</h2>'
+                + '<p style="color:var(--text-soft);max-width:300px;">Please return to the main app and re-open the dashboard from the admin panel.</p>'
+                + '<button onclick="window.location.href=\'../\'" style="padding:10px 24px;font-size:.9rem;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">← Back to Tracker</button>'
+                + '</div>';
+        }
+
         if (!token) {
-            mainEl.innerHTML = '<div class="login-prompt"><div style="font-size:2rem;">🔐</div><h2>Login Required</h2><p style="color:var(--text-soft);max-width:300px;">You must be logged in to access the admin dashboard.</p><button onclick="window.location.href=\'../?login\'" style="padding:10px 24px;font-size:.9rem;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Go to Login</button></div>';
+            showLoginPrompt('Login Required');
             return;
         }
 
@@ -147,7 +208,26 @@
         // ── STATE ────────────────────────────────────────────────────
         var allUsers = [];
         var allVessels = [];
+        var allFailures = [];     // [{ imo, count, name, trackers }]
+        var serverTime = null;    // ISO string sent by /admin/full-data
         var currentTab = 'fleet';
+
+        // ── HELPERS ──────────────────────────────────────────────────
+        // Vessels older than 6h are red, 1–6h yellow, fresh green.
+        // Returns { cls, label, hoursAgo } or null when there's no timestamp.
+        function staleness(updatedAtIso) {
+            if (!updatedAtIso) return { cls: 'none', label: '—', hoursAgo: null };
+            var now = serverTime ? new Date(serverTime).getTime() : Date.now();
+            var t = new Date(updatedAtIso).getTime();
+            if (isNaN(t)) return { cls: 'none', label: '—', hoursAgo: null };
+            var h = (now - t) / 3600000;
+            var cls = h > 6 ? 'stale' : h > 1 ? 'warn' : 'fresh';
+            var label = h < 1
+                ? Math.max(0, Math.round(h * 60)) + 'm ago'
+                : h < 24 ? Math.round(h) + 'h ago'
+                : Math.round(h / 24) + 'd ago';
+            return { cls: cls, label: label, hoursAgo: h };
+        }
 
         // ── API LOAD ─────────────────────────────────────────────────
         async function loadData() {
@@ -158,10 +238,21 @@
                     { headers: { Authorization: 'Bearer ' + token } },
                     15000
                 );
+                if (res.status === 401 || res.status === 403) {
+                    // Token is invalid or user lost admin rights — clear and re-prompt
+                    try {
+                        sessionStorage.removeItem('vt_admin_token');
+                        sessionStorage.removeItem('vt_admin_token_ts');
+                    } catch(_) {}
+                    showLoginPrompt(res.status === 403 ? 'Forbidden' : 'Session Expired');
+                    return false;
+                }
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 var data = await res.json();
                 allUsers = data.users || [];
                 allVessels = data.vessels || [];
+                allFailures = data.failures || [];
+                serverTime = data.server_time || null;
                 showToast('Data loaded', 'success');
                 return true;
             } catch(e) {
@@ -195,25 +286,88 @@
         function renderFleetTab(cnt) {
             var totalVessels = allVessels.length;
             var trackingUsers = allVessels.reduce(function(acc, v) { return acc + (v.tracking_users ? v.tracking_users.length : 0); }, 0);
-            cnt.innerHTML = '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
-                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+totalVessels+'</div><div style="font-size:.65rem;color:var(--text-soft);">Total Vessels</div></div>' +
-                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.65rem;color:var(--text-soft);">User-Vessel Trackings</div></div>' +
-                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+allUsers.length+'</div><div style="font-size:.65rem;color:var(--text-soft);">Users</div></div>' +
-                '</div>' +
-                '<div style="overflow-x:auto;">' +
-                '<table class="admin-table"><thead><tr><th>IMO</th><th>Vessel</th><th>Flag</th><th>Status</th><th>Tracked by</th><th>Actions</th></tr></thead>' +
-                '<tbody>' + allVessels.map(function(v) {
-                    var usersStr = (v.tracking_users || []).map(function(u){ return esc(u.username); }).join(', ') || '—';
-                    return '<tr>' +
-                        '<td><input type="checkbox" class="fleet-check" data-imo="'+v.imo+'"> '+esc(v.imo)+'</td>' +
-                        '<td>'+esc(v.name || 'IMO '+v.imo)+'</td>' +
+            var sanctionedCount = allVessels.filter(function(v){ return v.sanctioned; }).length;
+            var staleCount      = allVessels.filter(function(v){ var s = staleness(v.updated_at); return s.cls === 'stale'; }).length;
+            var failuresCount   = allFailures.length;
+
+            // Stat row — five small KPIs
+            var statsHtml = '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;">'+totalVessels+'</div><div style="font-size:.62rem;color:var(--text-soft);">Vessels</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.62rem;color:var(--text-soft);">Trackings</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                    '<div style="font-size:1.2rem;font-weight:700;">'+allUsers.length+'</div><div style="font-size:.62rem;color:var(--text-soft);">Users</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                    +(sanctionedCount?'border:1px solid rgba(255,69,0,.4);':'')+'">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:'+(sanctionedCount?'#ff6b35':'var(--text-main)')+';">'+sanctionedCount+'</div>' +
+                    '<div style="font-size:.62rem;color:var(--text-soft);">🚨 Sanctioned</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                    +(staleCount?'border:1px solid rgba(239,68,68,.4);':'')+'">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:'+(staleCount?'var(--danger)':'var(--text-main)')+';">'+staleCount+'</div>' +
+                    '<div style="font-size:.62rem;color:var(--text-soft);">Stale &gt;6h</div></div>' +
+                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                    +(failuresCount?'border:1px solid rgba(239,68,68,.4);':'')+'">' +
+                    '<div style="font-size:1.2rem;font-weight:700;color:'+(failuresCount?'var(--danger)':'var(--text-main)')+';">'+failuresCount+'</div>' +
+                    '<div style="font-size:.62rem;color:var(--text-soft);">Scrape Fails</div></div>' +
+                '</div>';
+
+            // Failure card — only shown if there are any flapping IMOs
+            var failuresHtml = '';
+            if (allFailures.length) {
+                var rowsHtml = allFailures.slice(0, 25).map(function(f){
+                    var trackerStr = (f.trackers && f.trackers.length) ? f.trackers.map(esc).join(', ') : '<em style="color:var(--text-soft);opacity:.7;">untracked</em>';
+                    return '<div class="failures-row">' +
+                        '<span class="imo">'+esc(f.imo)+'</span>' +
+                        '<span class="name">'+esc(f.name)+'</span>' +
+                        '<span class="cnt" title="Consecutive scrape failures">'+f.count+' fail'+(f.count===1?'':'s')+'</span>' +
+                        '<span style="color:var(--text-soft);font-size:.68rem;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+trackerStr+'</span>' +
+                        '</div>';
+                }).join('');
+                var moreHtml = allFailures.length > 25
+                    ? '<div style="margin-top:6px;font-size:.68rem;color:var(--text-soft);">+ '+(allFailures.length - 25)+' more…</div>' : '';
+                failuresHtml = '<div class="failures-card">' +
+                    '<div class="title">⚠️ Scraper failures (' + allFailures.length + ')</div>' +
+                    rowsHtml + moreHtml +
+                    '</div>';
+            }
+
+            // Vessel table — sanction badge + freshness dot + tooltip
+            var tableHtml = '<div style="overflow-x:auto;">' +
+                '<table class="admin-table"><thead><tr>' +
+                    '<th><input type="checkbox" id="fleetCheckAll" title="Select all"></th>' +
+                    '<th>IMO</th><th>Vessel</th><th>Flag</th><th>Status</th>' +
+                    '<th>Last AIS</th><th>Tracked by</th><th></th>' +
+                '</tr></thead><tbody>' +
+                allVessels.map(function(v) {
+                    var s = staleness(v.updated_at);
+                    var sancBadge = v.sanctioned
+                        ? '<span class="sanc-badge" title="'+esc((v.sanction_lists||[]).join(' · '))+'">🚨 SANC</span>'
+                        : '';
+                    var usersStr = (v.tracking_users || []).map(function(u){ return esc(u.username); }).join(', ') || '<em style="color:var(--text-soft);opacity:.7;">—</em>';
+                    return '<tr'+(v.sanctioned?' style="background:rgba(255,69,0,.04);"':'')+'>' +
+                        '<td><input type="checkbox" class="fleet-check" data-imo="'+v.imo+'"></td>' +
+                        '<td>'+esc(v.imo)+'</td>' +
+                        '<td>'+esc(v.name || 'IMO '+v.imo)+sancBadge+'</td>' +
                         '<td>'+esc(v.flag || '—')+'</td>' +
                         '<td>'+(v.status || 'PENDING')+'</td>' +
+                        '<td><span class="stale-dot '+s.cls+'" title="Last AIS update"></span>'+esc(s.label)+'</td>' +
                         '<td>'+usersStr+'</td>' +
-                        '<td><button onclick="window._removeGlobal(\''+v.imo+'\')" class="action-btn danger">✕</button></td>' +
+                        '<td><button onclick="window._removeGlobal(\''+v.imo+'\')" class="action-btn danger" title="Remove from ALL trackers">✕</button></td>' +
                     '</tr>';
-                }).join('') + '</tbody></table></div>' +
+                }).join('') +
+                '</tbody></table></div>' +
                 '<div style="margin-top:10px;"><button onclick="window._bulkRemove()" class="action-btn danger">🗑 Remove Selected</button></div>';
+
+            cnt.innerHTML = statsHtml + failuresHtml + tableHtml;
+
+            // Wire up "select all" checkbox
+            var checkAll = document.getElementById('fleetCheckAll');
+            if (checkAll) {
+                checkAll.onclick = function() {
+                    document.querySelectorAll('.fleet-check').forEach(function(c){ c.checked = checkAll.checked; });
+                };
+            }
 
             window._removeGlobal = async function(imo) {
                 if (!confirm('Remove IMO ' + imo + ' from ALL users?')) return;
@@ -372,14 +526,24 @@
                 } catch(e) { showToast(e.message, 'danger'); }
             };
             window._deleteUser = async function(uid) {
-                if (!confirm('DELETE this user and all their tracked vessels? This cannot be undone.')) return;
+                var u = allUsers.find(function(x){ return x.id === uid; });
+                if (!u) return;
+                var typed = prompt('This will DELETE user "' + u.username + '" and all their tracked vessels. This cannot be undone.\n\nType the username to confirm:');
+                if (typed === null) return;          // cancelled
+                if (typed.trim() !== u.username) {
+                    showToast('Username did not match — deletion cancelled.', 'warning');
+                    return;
+                }
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
                         body: JSON.stringify({ admin_token: token, user_id: uid })
                     });
-                    if (!res.ok) throw new Error('Failed');
+                    if (!res.ok) {
+                        var err = await res.json().catch(function(){ return {}; });
+                        throw new Error(err.error || 'Failed');
+                    }
                     showToast('User deleted', 'success');
                     await loadData(); switchTab('users');
                 } catch(e) { showToast(e.message, 'danger'); }
