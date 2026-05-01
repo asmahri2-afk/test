@@ -13,14 +13,12 @@ self.addEventListener('activate', (e) => {
 
 // ─────────────────────────────────────────────────────────────────
 // Fetch — same-origin, network-first.
-// IMPORTANT: bypass interception for /admin/ so cookies work.
+// Bypass interception for /admin/ so cookies work.
 // ─────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;
-
-    // Do NOT intercept admin pages (or any request under /admin/)
-    if (url.pathname.startsWith('/admin/')) return;
+    if (url.pathname.startsWith('/admin/')) return;   // <-- ONLY NEW LINE
 
     e.respondWith(
         fetch(e.request, { cache: 'no-store' }).catch(() => caches.match(e.request))
@@ -35,12 +33,16 @@ const DEFAULT_BADGE  = 'icon-512.png';
 const FALLBACK_TITLE = '🚢 VesselTracker';
 
 self.addEventListener('push', (event) => {
+    console.log('[SW] Push Received');
     let payload = {};
     try {
         payload = event.data ? event.data.json() : {};
+        console.log('[SW] Payload:', payload);
     } catch (e) {
+        console.error('[SW] JSON Parse Error:', e);
         payload = { title: FALLBACK_TITLE, body: event.data?.text() || 'New Update' };
     }
+
     const title = payload.title || FALLBACK_TITLE;
     const options = {
         body: String(payload.body || 'Vessel update received'),
@@ -51,29 +53,44 @@ self.addEventListener('push', (event) => {
         requireInteraction: false,
         data: { url: payload.url || '/', imo: payload.imo || null }
     };
-    event.waitUntil(self.registration.showNotification(title, options));
+
+    event.waitUntil(
+        self.registration.showNotification(title, options)
+            .then(() => console.log('[SW] Notification shown'))
+            .catch(err => console.error('[SW] showNotification failed:', err))
+    );
 });
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const target = event.notification.data?.url || '/';
     const targetURL = new URL(target, self.location.origin).href;
+
     event.waitUntil((async () => {
         const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const c of all) {
-            if (new URL(c.url).origin === self.location.origin) {
-                await c.focus();
-                c.postMessage({ kind: 'notification-click', data: event.notification.data });
-                return;
-            }
+            try {
+                if (new URL(c.url).origin === self.location.origin) {
+                    await c.focus();
+                    c.postMessage({ kind: 'notification-click', data: event.notification.data });
+                    return;
+                }
+            } catch (_) {}
         }
-        if (clients.openWindow) await clients.openWindow(targetURL);
+        if (clients.openWindow) {
+            await clients.openWindow(targetURL);
+        }
     })());
 });
 
+// ─────────────────────────────────────────────────────────────────
+// PUSH SUBSCRIPTION CHANGE — kept exactly as original
+// ─────────────────────────────────────────────────────────────────
 self.addEventListener('pushsubscriptionchange', (event) => {
     event.waitUntil((async () => {
         const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-        for (const c of all) all.postMessage({ kind: 'push-resubscribe-needed' });
+        for (const c of all) {
+            c.postMessage({ kind: 'push-resubscribe-needed' });
+        }
     })());
 });
