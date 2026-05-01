@@ -920,7 +920,29 @@ window.updateTrackedImos = async function(imo, isAdd, apiData = null) {
         }
 
         const result = await response.json();
-        
+
+        // ── Optimistic UI: update local state + render immediately ──
+        if (isAdd) {
+            if (!window.S.trackedImosCache.includes(imo)) {
+                window.S.trackedImosCache.push(imo);
+            }
+            if (apiData) {
+                const resolvedName = apiData.vessel_name || apiData.name || null;
+                window.S.staticCache.set(imo, { ...apiData, imo, name: resolvedName });
+            }
+        } else {
+            window.S.trackedImosCache = window.S.trackedImosCache.filter(i => i !== imo);
+            window.S.vesselsDataMap.delete(imo);
+        }
+        window.renderVessels(window.S.trackedImosCache);
+        window.updateFleetKPI(window.S.trackedImosCache);
+        if (window.el.vesselCount) {
+            const n = window.S.trackedImosCache.length;
+            window.el.vesselCount.textContent = n === 1
+                ? i18n.get('vesselTrackedSingle')
+                : i18n.get('vesselTracked').replace('{n}', n);
+        }
+
         if (isAdd) {
             const nextUpdateStr = (() => {
                 const base = window.S.lastFlowRunMs ? window.S.lastFlowRunMs : Date.now();
@@ -953,6 +975,8 @@ window.updateTrackedImos = async function(imo, isAdd, apiData = null) {
             window.updateStatus(i18n.get('removedImo').replace('{imo}', imo), 'success');
         }
         
+        // Release busy flag BEFORE loadData so it doesn't get skipped
+        window.S.isApiBusy = false;
         await window.loadData();
 
     } catch (err) {
