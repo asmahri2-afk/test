@@ -500,7 +500,9 @@ window.sofDownload = async function(imo) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        if (!window._ownersCache?.get(imo)?.name) {
         setTimeout(() => window.sofShowOwnerPopup(imo, data.vessel, data.owners), 800);
+    }
 
     } catch(e) {
         clearInterval(animInterval);
