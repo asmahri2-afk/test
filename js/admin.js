@@ -82,9 +82,10 @@ window.loadAdminDashboard = async function() {
                 ${renderVessels(data.public_fleet, '__public__')}
             </div>` : '';
 
-        // Full Dashboard button
+        // Full Dashboard button — token is handed off via sessionStorage,
+        // NEVER as a URL parameter (would leak in history/logs/Referer headers).
         const fullDashboardBtn = `
-    <button onclick="window.location.href='admin/index.html?token=' + encodeURIComponent(window.S.currentUser.access_token)"
+    <button onclick="window.openFullAdminDashboard()"
         style="width:100%;padding:10px;font-size:.8rem;font-weight:600;
                background:var(--accent);color:#fff;border:none;border-radius:8px;
                cursor:pointer;margin-bottom:12px;transition:opacity .15s;"
@@ -119,6 +120,28 @@ window.loadAdminDashboard = async function() {
         }
         el.innerHTML = `<span style="color:var(--danger);font-size:.75rem;">Failed: ${window.escapeHtml(e.message)}</span>`;
     }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full Dashboard launcher — hands off the access token via sessionStorage
+// instead of putting it in the URL (which would leak through history/logs/
+// Referer headers). Falls back to a same-tab navigation; the dashboard page
+// reads sessionStorage on load.
+// ─────────────────────────────────────────────────────────────────────────────
+window.openFullAdminDashboard = function() {
+    if (!window.S || !window.S.currentUser) {
+        alert('Please log in first.');
+        return;
+    }
+    try {
+        sessionStorage.setItem('vt_admin_token', window.S.currentUser.access_token);
+        sessionStorage.setItem('vt_admin_token_ts', String(Date.now()));
+    } catch(e) {
+        console.error('sessionStorage unavailable:', e);
+        alert('Cannot open Full Dashboard: sessionStorage is blocked.');
+        return;
+    }
+    window.location.href = 'admin/index.html';
 };
 
 window.adminToggleEdit = function(userId) {
