@@ -4,69 +4,126 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VesselTracker Admin</title>
-    <link rel="stylesheet" href="../css/style.css">
     <style>
-        body { background: var(--bg-main); color: var(--text-main); font-family: var(--sans); margin: 0; padding: 0; }
+        :root {
+            --bg-main: #020c1a;
+            --bg-card: #0a1628;
+            --bg-elevated: #111d32;
+            --text-main: #e2e8f0;
+            --text-soft: #94a3b8;
+            --accent: #0ea5e9;
+            --accent-soft: rgba(14,165,233,.15);
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --border: rgba(148,163,184,.15);
+            --sans: system-ui, -apple-system, sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg-main);
+            color: var(--text-main);
+            font-family: var(--sans);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
         .admin-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-        .admin-tab { padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-soft); font-size: .75rem; cursor: pointer; }
+        .admin-tab {
+            padding: 6px 16px; border-radius: 20px;
+            border: 1px solid var(--border); background: var(--bg-elevated);
+            color: var(--text-soft); font-size: .75rem; cursor: pointer;
+            transition: all .15s;
+        }
         .admin-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .admin-tab:hover:not(.active) { background: rgba(148,163,184,.1); }
         .admin-table { width: 100%; border-collapse: collapse; font-size: .73rem; }
-        .admin-table th { text-align: left; padding: 8px 6px; border-bottom: 2px solid var(--border); color: var(--text-soft); font-weight: 600; }
+        .admin-table th {
+            text-align: left; padding: 8px 6px;
+            border-bottom: 2px solid var(--border); color: var(--text-soft); font-weight: 600;
+        }
         .admin-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .admin-table input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
         .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: .65rem; }
-        .action-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-soft); cursor: pointer; padding: 3px 8px; font-size: .68rem; margin: 0 2px; }
+        .action-btn {
+            background: none; border: 1px solid var(--border); border-radius: 4px;
+            color: var(--text-soft); cursor: pointer; padding: 3px 8px; font-size: .68rem; margin: 0 2px;
+            transition: all .15s;
+        }
+        .action-btn:hover { opacity: .8; }
         .action-btn.danger { color: var(--danger); border-color: var(--danger); }
         .action-btn.success { color: var(--success); border-color: var(--success); }
+        .btn {
+            display: inline-block; padding: 8px 18px; border-radius: 6px;
+            border: none; cursor: pointer; font-size: .8rem; font-weight: 500;
+            transition: opacity .15s;
+        }
+        .btn:hover { opacity: .85; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-secondary { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-main); }
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .modal-inner {
+            background: var(--bg-card); padding: 20px; border-radius: 12px;
+            max-width: 400px; width: 90%; color: var(--text-main);
+        }
+        .modal-inner h3 { margin: 0 0 12px; font-size: .95rem; }
+        .modal-inner label { display: block; font-size: .73rem; color: var(--text-soft); margin: 8px 0 3px; }
+        .modal-inner input, .modal-inner select {
+            width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 6px; padding: 6px 8px; color: var(--text-main); font-size: .78rem;
+        }
+        .login-prompt {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 60vh; text-align: center; gap: 1rem;
+        }
+        select, textarea {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 6px; padding: 6px 8px; color: var(--text-main); font-size: .78rem;
+        }
+        textarea { width: 100%; resize: vertical; }
     </style>
 </head>
 <body>
     <div id="app">
-        <div style="padding:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="padding:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
             <h1 style="margin:0;font-size:1.1rem;">⚙️ Admin Dashboard</h1>
             <button onclick="window.location.href='../'" class="action-btn">← Back to Tracker</button>
         </div>
-        <div style="padding:0 16px;" id="mainContent">
-            <div style="padding:40px;text-align:center;color:var(--text-soft);">Initialising...</div>
+        <div style="padding:16px;" id="mainContent">
+            <div style="padding:40px;text-align:center;color:var(--text-soft);">Initialising…</div>
         </div>
         <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
     </div>
 
     <script>
-        // ================== CONFIG & GLOBALS ==================
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
+    (function() {
+        // ── CONFIG & GLOBALS ─────────────────────────────────────────
+        var params = new URLSearchParams(window.location.search);
+        var token = params.get('token');
+        var mainEl = document.getElementById('mainContent');
 
         if (!token) {
-            document.getElementById('mainContent').innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:1rem;">
-                    <div style="font-size:2rem;">🔐</div>
-                    <h2 style="margin:0;">Login Required</h2>
-                    <p style="color:var(--text-soft); max-width:300px;">
-                        You must be logged in to access the admin dashboard.
-                    </p>
-                    <button onclick="window.location.href='../?login'"
-                        style="padding:10px 24px;font-size:.9rem;border-radius:8px;
-                               background:var(--accent);color:#fff;border:none;cursor:pointer;">
-                        Go to Login
-                    </button>
-                </div>`;
-            throw new Error('STOP');
+            mainEl.innerHTML = '<div class="login-prompt"><div style="font-size:2rem;">🔐</div><h2>Login Required</h2><p style="color:var(--text-soft);max-width:300px;">You must be logged in to access the admin dashboard.</p><button onclick="window.location.href=\'../?login\'" style="padding:10px 24px;font-size:.9rem;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Go to Login</button></div>';
+            return;
         }
 
-        // Essential globals
         window.CONFIG = { WORKER_URL: '/api' };
         window.S = { currentUser: { access_token: token } };
 
-        window.escapeHtml = function(s) {
+        // ── UTILITIES ────────────────────────────────────────────────
+        function esc(s) {
             if (!s) return '';
             return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-        };
-        window.validateIMO = function(imo) {
+        }
+        function validateIMO(imo) {
             if (!/^\d{7}$/.test(imo)) return false;
-            var digits = imo.split('').map(Number);
-            return digits[6] === digits.slice(0,6).reduce(function(s,d,i){ return s+d*(7-i); },0)%10;
-        };
-        window.fetchWithTimeout = async function(url, options, timeout) {
+            var d = imo.split('').map(Number);
+            return d[6] === d.slice(0,6).reduce(function(s,dd,i){ return s+dd*(7-i); },0) % 10;
+        }
+        async function api(url, options, timeout) {
             timeout = timeout || 8000;
             var ctrl = new AbortController();
             var id = setTimeout(function(){ ctrl.abort(); }, timeout);
@@ -75,380 +132,302 @@
                 clearTimeout(id);
                 return r;
             } catch(e) { clearTimeout(id); throw e; }
-        };
+        }
+        function showToast(msg, type) {
+            var container = document.getElementById('adminToasts');
+            if (!container) return;
+            var toast = document.createElement('div');
+            var color = type === 'danger' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--text-main)';
+            toast.style.cssText = 'background:var(--bg-card);border:1px solid '+color+';border-radius:8px;padding:8px 14px;margin:4px 0;font-size:.73rem;color:'+color+';box-shadow:0 2px 8px rgba(0,0,0,.3);';
+            toast.textContent = msg;
+            container.appendChild(toast);
+            setTimeout(function(){ toast.remove(); }, 3500);
+        }
 
-        // ================== DASHBOARD SCRIPT ==================
-        (function() {
-            var token = window.S.currentUser.access_token;
-            var allUsers = [], allVessels = [];
-            var currentTab = 'fleet';
+        // ── STATE ────────────────────────────────────────────────────
+        var allUsers = [];
+        var allVessels = [];
+        var currentTab = 'fleet';
 
-            function showToast(msg, type) {
-                var container = document.getElementById('adminToasts');
-                var toast = document.createElement('div');
-                var color = type === 'danger' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--text-main)';
-                toast.style.cssText = 'background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin:4px 0;font-size:.73rem;color:'+color+';box-shadow:0 2px 8px rgba(0,0,0,.15);';
-                toast.textContent = msg;
-                container.appendChild(toast);
-                setTimeout(function(){ toast.remove(); }, 3500);
+        // ── API LOAD ─────────────────────────────────────────────────
+        async function loadData() {
+            showToast('Loading data…', 'info');
+            try {
+                var res = await api(
+                    window.CONFIG.WORKER_URL + '/admin/full-data',
+                    { headers: { Authorization: 'Bearer ' + token } },
+                    15000
+                );
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                var data = await res.json();
+                allUsers = data.users || [];
+                allVessels = data.vessels || [];
+                showToast('Data loaded', 'success');
+                return true;
+            } catch(e) {
+                showToast('Error: ' + e.message, 'danger');
+                return false;
             }
+        }
 
-            async function loadData() {
-                showToast('Loading data...', 'info');
+        // ── TAB SWITCHING ────────────────────────────────────────────
+        async function switchTab(tabId) {
+            currentTab = tabId;
+            document.querySelectorAll('.admin-tab').forEach(function(b) {
+                b.classList.toggle('active', b.getAttribute('data-id') === tabId);
+            });
+            document.getElementById('tabContent').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div>';
+            if (!allUsers.length) {
+                var ok = await loadData();
+                if (!ok) return;
+            }
+            renderTabContent();
+        }
+
+        function renderTabContent() {
+            var cnt = document.getElementById('tabContent');
+            if (currentTab === 'fleet') renderFleetTab(cnt);
+            else if (currentTab === 'bulk') renderBulkTab(cnt);
+            else if (currentTab === 'users') renderUsersTab(cnt);
+        }
+
+        // ── FLEET TAB ────────────────────────────────────────────────
+        function renderFleetTab(cnt) {
+            var totalVessels = allVessels.length;
+            var trackingUsers = allVessels.reduce(function(acc, v) { return acc + (v.tracking_users ? v.tracking_users.length : 0); }, 0);
+            cnt.innerHTML = '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
+                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+totalVessels+'</div><div style="font-size:.65rem;color:var(--text-soft);">Total Vessels</div></div>' +
+                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.65rem;color:var(--text-soft);">User-Vessel Tracking</div></div>' +
+                '<div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:1.2rem;font-weight:700;">'+allUsers.length+'</div><div style="font-size:.65rem;color:var(--text-soft);">Users</div></div>' +
+                '</div>' +
+                '<div style="overflow-x:auto;">' +
+                '<table class="admin-table"><thead><tr><th>IMO</th><th>Vessel</th><th>Flag</th><th>Status</th><th>Tracked by</th><th>Actions</th></tr></thead>' +
+                '<tbody>' + allVessels.map(function(v) {
+                    var usersStr = (v.tracking_users || []).map(function(u){ return esc(u.username); }).join(', ') || '—';
+                    return '<tr>' +
+                        '<td><input type="checkbox" class="fleet-check" data-imo="'+v.imo+'"> '+esc(v.imo)+'</td>' +
+                        '<td>'+esc(v.name || 'IMO '+v.imo)+'</td>' +
+                        '<td>'+esc(v.flag || '—')+'</td>' +
+                        '<td>'+(v.status || 'PENDING')+'</td>' +
+                        '<td>'+usersStr+'</td>' +
+                        '<td><button onclick="window._removeGlobal(\''+v.imo+'\')" class="action-btn danger">✕</button></td>' +
+                    '</tr>';
+                }).join('') + '</tbody></table></div>' +
+                '<div style="margin-top:10px;"><button onclick="window._bulkRemove()" class="action-btn danger">🗑 Remove Selected</button></div>';
+
+            // bind global functions
+            window._removeGlobal = async function(imo) {
+                if (!confirm('Remove IMO ' + imo + ' from ALL users?')) return;
                 try {
-                    var res = await window.fetchWithTimeout(
-                        window.CONFIG.WORKER_URL + '/admin/full-data',
-                        { headers: { Authorization: 'Bearer ' + token } },
-                        15000
-                    );
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ imos: [imo] })
+                    });
+                    if (!res.ok) throw new Error('Failed');
+                    showToast('IMO ' + imo + ' removed', 'success');
+                    await loadData();
+                    switchTab('fleet');
+                } catch(e) { showToast('Error: ' + e.message, 'danger'); }
+            };
+            window._bulkRemove = async function() {
+                var checks = document.querySelectorAll('.fleet-check:checked');
+                var imos = Array.from(checks).map(function(c){ return c.dataset.imo; });
+                if (!imos.length) return;
+                if (!confirm('Remove ' + imos.length + ' vessel(s) from ALL users?')) return;
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ imos: imos })
+                    }, 20000);
+                    if (!res.ok) throw new Error('Failed');
+                    showToast(imos.length + ' vessel(s) removed', 'success');
+                    await loadData();
+                    switchTab('fleet');
+                } catch(e) { showToast('Error: ' + e.message, 'danger'); }
+            };
+        }
+
+        // ── BULK ADD TAB ─────────────────────────────────────────────
+        function renderBulkTab(cnt) {
+            var opts = allUsers.map(function(u){ return '<option value="'+u.id+'">'+esc(u.username)+'</option>'; }).join('');
+            cnt.innerHTML = '<h3>Add Vessels to a User in Bulk</h3>' +
+                '<div style="background:var(--bg-elevated);border-radius:8px;padding:12px;">' +
+                '<label style="font-size:.73rem;">Select user:</label>' +
+                '<select id="bulkUser" style="width:100%;margin-bottom:10px;">'+opts+'</select>' +
+                '<label style="font-size:.73rem;">Paste IMOs (one per line, or comma-separated):</label>' +
+                '<textarea id="bulkImo" rows="5" placeholder="IMO1, IMO2, …"></textarea>' +
+                '<button onclick="window._bulkAdd()" class="btn btn-primary" style="margin-top:10px;">Add Vessels</button>' +
+                '<div id="bulkResult" style="margin-top:8px;font-size:.75rem;"></div></div>';
+
+            window._bulkAdd = async function() {
+                var userId = document.getElementById('bulkUser').value;
+                var raw = document.getElementById('bulkImo').value;
+                var imos = raw.split(/[,\n\s]+/).map(function(s){ return s.trim(); }).filter(function(s){ return /^\d{7}$/.test(s); });
+                if (!imos.length) return showToast('No valid IMOs found.', 'warning');
+                var invalid = imos.filter(function(i){ return !validateIMO(i); });
+                if (invalid.length) { showToast(invalid.length + ' IMO(s) fail checksum: ' + invalid.join(', '), 'danger'); return; }
+                document.getElementById('bulkResult').innerText = 'Sending…';
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-add', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ user_id: userId, imos: imos })
+                    }, 30000);
                     var data = await res.json();
-                    allUsers = data.users || [];
-                    allVessels = data.vessels || [];
-                    showToast('Data loaded', 'success');
+                    if (!res.ok) throw new Error(data.error || 'Request failed');
+                    document.getElementById('bulkImo').value = '';
+                    document.getElementById('bulkResult').innerHTML = '✅ ' + (data.added||0) + ' added, ' + (data.skipped||0) + ' skipped.';
+                    showToast('Bulk add complete', 'success');
                 } catch(e) {
-                    showToast('Error loading data: ' + e.message, 'danger');
+                    document.getElementById('bulkResult').innerHTML = '<span style="color:var(--danger);">Error: '+esc(e.message)+'</span>';
+                    showToast('Bulk add failed', 'danger');
                 }
-            }
+            };
+        }
 
-            function switchTab(tabId) {
-                currentTab = tabId;
-                document.querySelectorAll('.admin-tab').forEach(function(b, i) {
-                    b.classList.toggle('active', b.getAttribute('data-id') === tabId);
-                });
-                document.getElementById('tabContent').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-soft);">Loading...</div>';
-                if (!allUsers.length) {
-                    loadData().then(renderTabContent);
-                } else {
-                    renderTabContent();
-                }
-            }
+        // ── USERS TAB ────────────────────────────────────────────────
+        function renderUsersTab(cnt) {
+            cnt.innerHTML = '<button onclick="window._addUserModal()" class="btn btn-primary" style="margin-bottom:12px;">+ Add New User</button>' +
+                '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Username</th><th>Fleet</th><th>CallMeBot</th><th>Status</th><th>Actions</th></tr></thead>' +
+                '<tbody>' + allUsers.map(function(u) {
+                    var badge = u.is_frozen ? '<span class="badge" style="background:rgba(239,68,68,.2);color:var(--danger);">Frozen</span>' :
+                        (!u.can_add_vessels ? '<span class="badge" style="background:rgba(245,158,11,.2);color:var(--warning);">Ban Add</span>' : '<span class="badge" style="background:rgba(34,197,94,.2);color:var(--success);">Active</span>');
+                    return '<tr>' +
+                        '<td>'+esc(u.username)+'</td>' +
+                        '<td>'+(u.vessels ? u.vessels.length : 0)+'</td>' +
+                        '<td>'+(u.callmebot_enabled ? 'ON' : 'OFF')+'</td>' +
+                        '<td>'+badge+'</td>' +
+                        '<td>' +
+                            '<button onclick="window._toggleFreeze(\''+u.id+'\','+!!u.is_frozen+')" class="action-btn '+(u.is_frozen?'success':'danger')+'">'+(u.is_frozen?'Unfreeze':'Freeze')+'</button> ' +
+                            '<button onclick="window._toggleBan(\''+u.id+'\','+!!u.can_add_vessels+')" class="action-btn '+(u.can_add_vessels?'danger':'success')+'">'+(u.can_add_vessels?'Ban':'Allow')+'</button> ' +
+                            '<button onclick="window._editUser(\''+u.id+'\')" class="action-btn">✏️</button> ' +
+                            '<button onclick="window._deleteUser(\''+u.id+'\')" class="action-btn danger">🗑</button>' +
+                        '</td></tr>';
+                }).join('') + '</tbody></table></div>';
 
-            function renderTabContent() {
-                var cnt = document.getElementById('tabContent');
-                if (currentTab === 'fleet') renderFleetTab(cnt);
-                else if (currentTab === 'bulk') renderBulkTab(cnt);
-                else if (currentTab === 'users') renderUsersTab(cnt);
-            }
-
-            function renderFleetTab(cnt) {
-                var totalVessels = allVessels.length;
-                var trackingUsers = allVessels.reduce(function(acc, v) { return acc + (v.tracking_users ? v.tracking_users.length : 0); }, 0);
-                var userCount = allUsers.length;
-
-                cnt.innerHTML = `
-                    <div style="display:flex;gap:12px;margin-bottom:16px;">
-                        <div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">
-                            <div style="font-size:1.2rem;font-weight:700;">${totalVessels}</div>
-                            <div style="font-size:.65rem;color:var(--text-soft);">Total Vessels</div>
-                        </div>
-                        <div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">
-                            <div style="font-size:1.2rem;font-weight:700;">${trackingUsers}</div>
-                            <div style="font-size:.65rem;color:var(--text-soft);">User-Vessel Trackings</div>
-                        </div>
-                        <div style="flex:1;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">
-                            <div style="font-size:1.2rem;font-weight:700;">${userCount}</div>
-                            <div style="font-size:.65rem;color:var(--text-soft);">Users</div>
-                        </div>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table class="admin-table">
-                            <thead><tr><th>IMO</th><th>Vessel</th><th>Flag</th><th>Status</th><th>Tracked by</th><th>Last Alert</th><th>Actions</th></tr></thead>
-                            <tbody>${allVessels.map(function(v) {
-                                var statusLabel = v.status || 'DATA PENDING';
-                                var usersStr = (v.tracking_users || []).map(function(u){ return window.escapeHtml(u.username); }).join(', ') || '—';
-                                var lastAlert = v.last_alert_utc ? new Date(v.last_alert_utc).toLocaleString() : '—';
-                                return `<tr>
-                                    <td><input type="checkbox" class="fleet-check" data-imo="${v.imo}"></td>
-                                    <td>${window.escapeHtml(v.imo)}</td>
-                                    <td>${window.escapeHtml(v.name || 'IMO '+v.imo)}</td>
-                                    <td>${window.escapeHtml(v.flag || '—')}</td>
-                                    <td>${statusLabel}</td>
-                                    <td>${usersStr}</td>
-                                    <td>${lastAlert}</td>
-                                    <td><button onclick="removeVesselGlobally('${v.imo}')" class="action-btn danger">✕</button></td>
-                                </tr>`;
-                            }).join('')}</tbody>
-                        </table>
-                    </div>
-                    <div style="margin-top:10px;">
-                        <button onclick="bulkRemoveSelected()" class="action-btn danger">🗑 Remove Selected</button>
-                    </div>`;
-
-                window.removeVesselGlobally = async function(imo) {
-                    if (!confirm('Remove IMO ' + imo + ' from ALL users?')) return;
-                    try {
-                        var res = await window.fetchWithTimeout(
-                            window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove',
-                            {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify({ imos: [imo] })
-                            }
-                        );
-                        if (!res.ok) throw new Error('Failed');
-                        showToast('IMO ' + imo + ' removed globally', 'success');
-                        await loadData();
-                        switchTab('fleet');
-                    } catch(e) { showToast('Error: ' + e.message, 'danger'); }
-                };
-
-                window.bulkRemoveSelected = async function() {
-                    var checks = document.querySelectorAll('.fleet-check:checked');
-                    var imos = Array.from(checks).map(function(c) { return c.dataset.imo; });
-                    if (!imos.length) return;
-                    if (!confirm('Remove ' + imos.length + ' vessel(s) from ALL users?')) return;
-                    try {
-                        var res = await window.fetchWithTimeout(
-                            window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove',
-                            {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify({ imos: imos })
-                            },
-                            20000
-                        );
-                        if (!res.ok) throw new Error('Failed');
-                        showToast(imos.length + ' vessel(s) removed globally', 'success');
-                        await loadData();
-                        switchTab('fleet');
-                    } catch(e) { showToast('Bulk remove failed: ' + e.message, 'danger'); }
-                };
-            }
-
-            function renderBulkTab(cnt) {
-                var userOptions = allUsers.map(function(u) {
-                    return '<option value="' + u.id + '">' + window.escapeHtml(u.username) + '</option>';
-                }).join('');
-                cnt.innerHTML = `
-                    <h3>Add Vessels to a User in Bulk</h3>
-                    <div style="background:var(--bg-elevated);border-radius:8px;padding:12px;">
-                        <label>Select user:</label>
-                        <select id="bulkUserSelect" style="width:100%;margin-bottom:10px;">${userOptions}</select>
-                        <label>Paste IMOs (one per line, or comma-separated):</label>
-                        <textarea id="bulkImoInput" rows="6" placeholder="IMO1, IMO2, ..." style="width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text-main);"></textarea>
-                        <button onclick="bulkAddVessels()" class="btn btn-primary" style="margin-top:10px;">Add Vessels</button>
-                        <div id="bulkResult" style="margin-top:8px;font-size:.75rem;"></div>
-                    </div>`;
-
-                window.bulkAddVessels = async function() {
-                    var userId = document.getElementById('bulkUserSelect').value;
-                    var raw = document.getElementById('bulkImoInput').value;
-                    var imos = raw.split(/[,\n\s]+/).map(function(s) { return s.trim(); }).filter(function(s) { return /^\d{7}$/.test(s); });
-                    if (!imos.length) return showToast('No valid IMOs found.', 'warning');
-
-                    var invalid = imos.filter(function(imo) { return !window.validateIMO(imo); });
-                    if (invalid.length) {
-                        showToast(invalid.length + ' IMO(s) fail checksum: ' + invalid.join(', '), 'danger');
-                        return;
-                    }
-
-                    document.getElementById('bulkResult').innerText = 'Sending...';
-                    try {
-                        var res = await window.fetchWithTimeout(
-                            window.CONFIG.WORKER_URL + '/admin/fleet/bulk-add',
-                            {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify({ user_id: userId, imos: imos })
-                            },
-                            30000
-                        );
-                        var data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Request failed');
-                        document.getElementById('bulkImoInput').value = '';
-                        document.getElementById('bulkResult').innerHTML = '✅ ' + (data.added || 0) + ' added, ' + (data.skipped || 0) + ' skipped (already tracked).';
-                        showToast('Bulk add completed', 'success');
-                    } catch(e) {
-                        document.getElementById('bulkResult').innerHTML = '<span style="color:var(--danger);">Error: ' + e.message + '</span>';
-                        showToast('Bulk add failed', 'danger');
-                    }
-                };
-            }
-
-            function renderUsersTab(cnt) {
-                cnt.innerHTML = `
-                    <button onclick="showAddUserModal()" class="btn btn-primary" style="margin-bottom:12px;">+ Add New User</button>
-                    <div style="overflow-x:auto;">
-                        <table class="admin-table">
-                            <thead><tr><th>Username</th><th>Fleet Size</th><th>CallMeBot</th><th>Status</th><th>Actions</th></tr></thead>
-                            <tbody>${allUsers.map(function(u) {
-                                var statusBadge = u.is_frozen ? '<span class="badge" style="background:rgba(239,68,68,.2);color:var(--danger);">Frozen</span>' :
-                                    (!u.can_add_vessels ? '<span class="badge" style="background:rgba(245,158,11,.2);color:var(--warning);">Ban Add</span>' : '<span class="badge" style="background:rgba(34,197,94,.2);color:var(--success);">Active</span>');
-                                var callmebot = u.callmebot_enabled ? 'ON' : 'OFF';
-                                return `<tr>
-                                    <td>${window.escapeHtml(u.username)}</td>
-                                    <td>${u.vessels ? u.vessels.length : 0}</td>
-                                    <td>${callmebot}</td>
-                                    <td>${statusBadge}</td>
-                                    <td>
-                                        <button onclick="toggleFreeze('${u.id}', ${u.is_frozen})" class="action-btn ${u.is_frozen ? 'success' : 'danger'}">${u.is_frozen ? 'Unfreeze' : 'Freeze'}</button>
-                                        <button onclick="toggleBanAdd('${u.id}', ${u.can_add_vessels})" class="action-btn ${u.can_add_vessels ? 'danger' : 'success'}">${u.can_add_vessels ? 'Ban Add' : 'Allow Add'}</button>
-                                        <button onclick="editUserDetails('${u.id}')" class="action-btn">✏️ Edit</button>
-                                        <button onclick="deleteUser('${u.id}')" class="action-btn danger">🗑</button>
-                                    </td>
-                                </tr>`;
-                            }).join('')}</tbody>
-                        </table>
-                    </div>`;
-
-                window.toggleFreeze = async function(userId, current) {
-                    if (!confirm('Are you sure you want to ' + (current ? 'unfreeze' : 'freeze') + ' this user?')) return;
-                    await setUserStatus(userId, { is_frozen: !current });
-                };
-                window.toggleBanAdd = async function(userId, current) {
-                    if (!confirm('Are you sure you want to ' + (current ? 'ban' : 'allow') + ' adding vessels for this user?')) return;
-                    await setUserStatus(userId, { can_add_vessels: !current });
-                };
-                async function setUserStatus(userId, fields) {
-                    try {
-                        var res = await window.fetchWithTimeout(
-                            window.CONFIG.WORKER_URL + '/admin/user/status',
-                            {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify(Object.assign({ user_id: userId }, fields))
-                            }
-                        );
-                        if (!res.ok) throw new Error('Failed');
-                        showToast('Status updated', 'success');
-                        await loadData();
-                        switchTab('users');
-                    } catch(e) { showToast('Update failed: ' + e.message, 'danger'); }
-                }
-                window.deleteUser = async function(userId) {
-                    if (!confirm('DELETE this user and all their tracked vessels? This cannot be undone.')) return;
-                    try {
-                        var res = await window.fetchWithTimeout(
-                            window.CONFIG.WORKER_URL + '/admin/user/delete',
-                            { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ user_id: userId }) }
-                        );
-                        if (!res.ok) throw new Error('Failed');
-                        showToast('User deleted', 'success');
-                        await loadData();
-                        switchTab('users');
-                    } catch(e) { showToast('Deletion error: ' + e.message, 'danger'); }
-                };
-                window.editUserDetails = function(userId) {
-                    var user = allUsers.find(function(u) { return u.id === userId; });
-                    if (!user) return;
-                    var modal = document.getElementById('userEditModal');
-                    if (modal) modal.remove();
-                    var html = '<div class="modal" id="userEditModal"><div class="modal-inner">' +
-                        '<h3>Edit ' + window.escapeHtml(user.username) + '</h3>' +
-                        '<label>Phone</label><input id="editPhone" value="'+window.escapeHtml(user.callmebot_phone||'')+'"><br/>' +
-                        '<label>API Key</label><input id="editApikey" value="'+window.escapeHtml(user.callmebot_apikey||'')+'"><br/>' +
-                        '<label>CallMeBot</label><select id="editCmEnabled">' +
-                            '<option value="true" '+ (user.callmebot_enabled?'selected':'') +'>ON</option>' +
-                            '<option value="false" '+ (!user.callmebot_enabled?'selected':'') +'>OFF</option>' +
-                        '</select><br/>' +
-                        '<label>New PIN (leave blank to keep)</label><input id="editPin" type="number" min="1000" max="999999"><br/>' +
-                        '<div style="margin-top:12px;display:flex;gap:8px;">' +
-                            '<button onclick="saveUserEdit(\''+userId+'\')" class="btn btn-primary">Save</button>' +
-                            '<button onclick="document.getElementById(\'userEditModal\').remove()" class="btn btn-secondary">Cancel</button>' +
-                        '</div></div></div>';
-                    document.body.insertAdjacentHTML('beforeend', html);
-                };
-                window.saveUserEdit = async function(userId) {
-                    var phone = document.getElementById('editPhone').value.trim();
-                    var apikey = document.getElementById('editApikey').value.trim();
-                    var cmEnabled = document.getElementById('editCmEnabled').value === 'true';
-                    var pin = document.getElementById('editPin').value.trim();
-                    try {
-                        var res = await window.fetchWithTimeout(window.CONFIG.WORKER_URL + '/admin/user/update', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                            body: JSON.stringify({ user_id: userId, callmebot_phone: phone, callmebot_apikey: apikey, callmebot_enabled: cmEnabled })
+            window._toggleFreeze = async function(uid, current) {
+                if (!confirm((current?'Unfreeze':'Freeze')+' this user?')) return;
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ user_id: uid, is_frozen: !current })
+                    });
+                    if (!res.ok) throw new Error('Failed');
+                    showToast('Status updated', 'success');
+                    await loadData(); switchTab('users');
+                } catch(e) { showToast(e.message, 'danger'); }
+            };
+            window._toggleBan = async function(uid, current) {
+                if (!confirm((current?'Ban':'Allow')+' adding vessels?')) return;
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ user_id: uid, can_add_vessels: !current })
+                    });
+                    if (!res.ok) throw new Error('Failed');
+                    showToast('Status updated', 'success');
+                    await loadData(); switchTab('users');
+                } catch(e) { showToast(e.message, 'danger'); }
+            };
+            window._editUser = function(uid) {
+                var u = allUsers.find(function(x){ return x.id === uid; });
+                if (!u) return;
+                var m = document.getElementById('userEditModal');
+                if (m) m.remove();
+                document.body.insertAdjacentHTML('beforeend',
+                    '<div class="modal" id="userEditModal"><div class="modal-inner">' +
+                    '<h3>Edit '+esc(u.username)+'</h3>' +
+                    '<label>Phone</label><input id="euPhone" value="'+esc(u.callmebot_phone||'')+'">' +
+                    '<label>API Key</label><input id="euApikey" value="'+esc(u.callmebot_apikey||'')+'">' +
+                    '<label>CallMeBot</label><select id="euCm"><option value="true" '+(u.callmebot_enabled?'selected':'')+'>ON</option><option value="false" '+(!u.callmebot_enabled?'selected':'')+'>OFF</option></select>' +
+                    '<label>New PIN (optional)</label><input id="euPin" type="number" min="1000" max="999999">' +
+                    '<div style="margin-top:12px;display:flex;gap:8px;">' +
+                    '<button onclick="window._saveEdit(\''+uid+'\')" class="btn btn-primary">Save</button>' +
+                    '<button onclick="document.getElementById(\'userEditModal\').remove()" class="btn btn-secondary">Cancel</button>' +
+                    '</div></div></div>');
+            };
+            window._saveEdit = async function(uid) {
+                var phone = document.getElementById('euPhone').value.trim();
+                var apikey = document.getElementById('euApikey').value.trim();
+                var cm = document.getElementById('euCm').value === 'true';
+                var pin = document.getElementById('euPin').value.trim();
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/user/update', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ user_id: uid, callmebot_phone: phone, callmebot_apikey: apikey, callmebot_enabled: cm })
+                    });
+                    if (!res.ok) throw new Error('Settings update failed');
+                    if (pin && /^\d{4,6}$/.test(pin)) {
+                        res = await api(window.CONFIG.WORKER_URL + '/admin/user/pin', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                            body: JSON.stringify({ user_id: uid, new_pin: pin })
                         });
-                        if (!res.ok) throw new Error('Settings update failed');
-                        if (pin && /^\d{4,6}$/.test(pin)) {
-                            res = await window.fetchWithTimeout(window.CONFIG.WORKER_URL + '/admin/user/pin', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                                body: JSON.stringify({ user_id: userId, new_pin: pin })
-                            });
-                            if (!res.ok) throw new Error('PIN reset failed');
-                        }
-                        var modal = document.getElementById('userEditModal');
-                        if (modal) modal.remove();
-                        showToast('User updated', 'success');
-                        await loadData();
-                        switchTab('users');
-                    } catch(e) { showToast('Error: ' + e.message, 'danger'); }
-                };
-                window.showAddUserModal = function() {
-                    var modal = document.getElementById('addUserModal');
-                    if (modal) modal.remove();
-                    var html = '<div class="modal" id="addUserModal"><div class="modal-inner">' +
-                        '<h3>New User</h3>' +
-                        '<input id="newUsername" placeholder="Username" style="width:100%;margin:5px 0;"><br/>' +
-                        '<input id="newPin" type="number" placeholder="PIN (4-6 digits)" min="1000" max="999999" style="width:100%;margin:5px 0;"><br/>' +
-                        '<button onclick="createUser()" class="btn btn-primary">Create</button>' +
-                        '<button onclick="document.getElementById(\'addUserModal\').remove()" class="btn btn-secondary">Cancel</button>' +
-                        '</div></div>';
-                    document.body.insertAdjacentHTML('beforeend', html);
-                };
-                window.createUser = async function() {
-                    var username = document.getElementById('newUsername').value.trim();
-                    var pin = document.getElementById('newPin').value.trim();
-                    if (!username || !/^\d{4,6}$/.test(pin)) {
-                        showToast('Invalid username or PIN', 'warning');
-                        return;
+                        if (!res.ok) throw new Error('PIN reset failed');
                     }
-                    try {
-                        var res = await window.fetchWithTimeout(window.CONFIG.WORKER_URL + '/admin/user/create', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                            body: JSON.stringify({ username: username, pin: pin })
-                        });
-                        if (!res.ok) {
-                            var err = await res.json();
-                            throw new Error(err.error || 'Creation failed');
-                        }
-                        var modal = document.getElementById('addUserModal');
-                        if (modal) modal.remove();
-                        showToast('User created', 'success');
-                        await loadData();
-                        switchTab('users');
-                    } catch(e) { showToast('Error: ' + e.message, 'danger'); }
-                };
-            }
+                    var m = document.getElementById('userEditModal'); if (m) m.remove();
+                    showToast('User updated', 'success');
+                    await loadData(); switchTab('users');
+                } catch(e) { showToast(e.message, 'danger'); }
+            };
+            window._deleteUser = async function(uid) {
+                if (!confirm('DELETE this user and all their tracked vessels? This cannot be undone.')) return;
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/user/delete', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ user_id: uid })
+                    });
+                    if (!res.ok) throw new Error('Failed');
+                    showToast('User deleted', 'success');
+                    await loadData(); switchTab('users');
+                } catch(e) { showToast(e.message, 'danger'); }
+            };
+            window._addUserModal = function() {
+                var m = document.getElementById('addUserModal'); if (m) m.remove();
+                document.body.insertAdjacentHTML('beforeend',
+                    '<div class="modal" id="addUserModal"><div class="modal-inner"><h3>New User</h3>' +
+                    '<input id="nuName" placeholder="Username"><br>' +
+                    '<input id="nuPin" type="number" placeholder="PIN (4-6 digits)" min="1000" max="999999"><br>' +
+                    '<div style="margin-top:12px;display:flex;gap:8px;">' +
+                    '<button onclick="window._createUser()" class="btn btn-primary">Create</button>' +
+                    '<button onclick="document.getElementById(\'addUserModal\').remove()" class="btn btn-secondary">Cancel</button>' +
+                    '</div></div></div>');
+            };
+            window._createUser = async function() {
+                var name = document.getElementById('nuName').value.trim();
+                var pin = document.getElementById('nuPin').value.trim();
+                if (!name || !/^\d{4,6}$/.test(pin)) { showToast('Invalid username or PIN', 'warning'); return; }
+                try {
+                    var res = await api(window.CONFIG.WORKER_URL + '/admin/user/create', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                        body: JSON.stringify({ username: name, pin: pin })
+                    });
+                    if (!res.ok) { var e = await res.json(); throw new Error(e.error||'Creation failed'); }
+                    var m = document.getElementById('addUserModal'); if (m) m.remove();
+                    showToast('User created', 'success');
+                    await loadData(); switchTab('users');
+                } catch(e) { showToast(e.message, 'danger'); }
+            };
+        }
 
-            // Build tab bar
-            var tabs = [
-                { id: 'fleet', label: '🚢 Fleet Manager' },
-                { id: 'bulk', label: '📥 Bulk Add' },
-                { id: 'users', label: '👥 User Manager' }
-            ];
-            var tabsEl = document.getElementById('tabs');
-            tabs.forEach(function(t) {
-                var btn = document.createElement('button');
-                btn.className = 'admin-tab';
-                btn.setAttribute('data-id', t.id);
-                btn.textContent = t.label;
-                btn.onclick = function() { switchTab(t.id); };
-                tabsEl.appendChild(btn);
-            });
+        // ── INIT ─────────────────────────────────────────────────────
+        mainEl.innerHTML = '<div class="admin-tabs" id="tabs"></div><div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div></div>';
 
-            // Prepare UI and start loading
-            document.getElementById('mainContent').innerHTML = `
-                <div class="admin-tabs" id="tabs"></div>
-                <div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading data...</div></div>
-            `;
-            // Re-get tabsEl after innerHTML overwrite
-            tabsEl = document.getElementById('tabs');
-            tabs.forEach(function(t) {
-                var btn = document.createElement('button');
-                btn.className = 'admin-tab';
-                btn.setAttribute('data-id', t.id);
-                btn.textContent = t.label;
-                btn.onclick = function() { switchTab(t.id); };
-                tabsEl.appendChild(btn);
-            });
+        var tabDefs = [
+            { id:'fleet', label:'🚢 Fleet Manager' },
+            { id:'bulk', label:'📥 Bulk Add' },
+            { id:'users', label:'👥 User Manager' }
+        ];
+        var tabsEl = document.getElementById('tabs');
+        tabDefs.forEach(function(t) {
+            var b = document.createElement('button');
+            b.className = 'admin-tab';
+            b.setAttribute('data-id', t.id);
+            b.textContent = t.label;
+            b.onclick = function(){ switchTab(t.id); };
+            tabsEl.appendChild(b);
+        });
 
-            // Start first data load
-            loadData().then(function() { switchTab('fleet'); });
-        })();
+        loadData().then(function(ok){ if (ok) switchTab('fleet'); });
+    })();
     </script>
 </body>
 </html>
