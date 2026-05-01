@@ -8,14 +8,24 @@
     }
 
     function startDashboard() {
-        // Verify admin access
-        if (!window.S.currentUser) {
-            // Redirect to login if needed
-            window.location.href = '../?login';
-            return;
+    // Verify admin access — show message if not logged in, no auto-redirect
+    if (!window.S || !window.S.currentUser) {
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) {
+            tabContent.innerHTML = `
+                <div style="text-align:center;padding:40px;">
+                    <p style="color:var(--danger);font-size:.85rem;">Session expired or missing. Please log in.</p>
+                    <button onclick="window.location.href='../?login'"
+                        style="padding:8px 18px;font-size:.8rem;border-radius:6px;
+                               background:var(--accent);color:#fff;border:none;cursor:pointer;">
+                        Go to Login
+                    </button>
+                </div>`;
         }
+        return;
+    }
 
-        const token = window.S.currentUser.access_token;
+    const token = window.S.currentUser.access_token;
 
         // Tab definitions
         const tabs = [
