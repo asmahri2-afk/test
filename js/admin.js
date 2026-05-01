@@ -84,13 +84,13 @@ window.loadAdminDashboard = async function() {
 
         // Full Dashboard button
         const fullDashboardBtn = `
-            <button onclick="window.location.href='admin/index.html'"
-                style="width:100%;padding:10px;font-size:.8rem;font-weight:600;
-                       background:var(--accent);color:#fff;border:none;border-radius:8px;
-                       cursor:pointer;margin-bottom:12px;transition:opacity .15s;"
-                onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-                📊 Full Dashboard
-            </button>`;
+    <button onclick="window.location.href='admin/index.html?token=' + encodeURIComponent(window.S.currentUser.access_token)"
+        style="width:100%;padding:10px;font-size:.8rem;font-weight:600;
+               background:var(--accent);color:#fff;border:none;border-radius:8px;
+               cursor:pointer;margin-bottom:12px;transition:opacity .15s;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        📊 Full Dashboard
+    </button>`;
 
         el.innerHTML = `
             <div style="display:flex;gap:6px;margin-bottom:10px;">
