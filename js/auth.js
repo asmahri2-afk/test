@@ -101,12 +101,14 @@ window.isAllowedEmailDomain = function(email) {
 };
 window.register = async function(username, pin, email) {
     const res = await window.fetchWithTimeout(`${CONFIG.WORKER_URL}/auth/register`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, pin, email })
     }, 12000);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return window.login(username, pin);
+    // DO NOT auto-login — account may be frozen (pending approval).
+    return data;   // { success: true, user_id: ... }
 };
 window.login = async function(username, pin) {
     const res = await window.fetchWithTimeout(`${CONFIG.WORKER_URL}/auth/login`, {
@@ -249,11 +251,18 @@ window.submitAuth = async function() {
     }
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '⏳'; }
     try {
-        if (mode === 'register') await window.register(username, pin, email);
-        else await window.login(username, pin);
-    } catch (e) {
-        if (errDiv) errDiv.textContent = e.message || 'Something went wrong';
-    } finally {
+    if (mode === 'register') {
+        await window.register(username, pin, email);
+        // Registration succeeded — close modal, tell user to wait for approval.
+        window.closeAuthModal();
+        window.showToast?.(i18n.get('registrationPending') || 'Account created — pending approval.', 'success', 5000);
+    } else {
+        await window.login(username, pin);
+        // login() already handles session, modal close, etc.
+    }
+} catch (e) {
+    if (errDiv) errDiv.textContent = e.message || 'Something went wrong';
+} finally {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = mode === 'register' ? 'Create Account' : 'Login'; }
     }
 };
