@@ -2,7 +2,30 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Allow pinch-zoom for accessibility (WCAG 2.1) — removed maximum-scale=1.0 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!--
+      Content Security Policy — locks down what scripts, styles, and network
+      requests this page can do. With zero inline event handlers in our markup
+      we could go stricter, but the page itself ships ONE inline JS block so
+      'unsafe-inline' is still required for script-src. If you ever externalise
+      that block into admin.js, drop 'unsafe-inline' from script-src and add
+      a hash or nonce instead.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        script-src 'self' 'unsafe-inline';
+        style-src 'self' 'unsafe-inline';
+        connect-src 'self';
+        img-src 'self' data:;
+        font-src 'self';
+        base-uri 'none';
+        form-action 'none';
+        frame-ancestors 'none';
+        object-src 'none';
+    ">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <title>VesselTracker Admin</title>
     <style>
         :root {
@@ -20,68 +43,85 @@
             --sans: system-ui, -apple-system, sans-serif;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { -webkit-text-size-adjust: 100%; }
         body {
             background: var(--bg-main);
             color: var(--text-main);
             font-family: var(--sans);
             line-height: 1.5;
             min-height: 100vh;
+            /* Respect iOS safe area on notched phones */
+            padding-bottom: env(safe-area-inset-bottom);
         }
         .admin-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
         .admin-tab {
-            padding: 6px 16px; border-radius: 20px;
-            border: 1px solid var(--border); background: var(--bg-elevated);
-            color: var(--text-soft); font-size: .75rem; cursor: pointer;
-            transition: all .15s;
+            padding: 10px 16px; border-radius: 8px; cursor: pointer;
+            background: var(--bg-card); color: var(--text-soft);
+            border: 1px solid var(--border); transition: all .15s;
+            font-size: .8rem; font-weight: 500; flex: 1 1 auto;
+            min-height: 44px; /* touch-target */
+            display: inline-flex; align-items: center; justify-content: center;
         }
-        .admin-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .admin-tab:hover:not(.active) { background: rgba(148,163,184,.1); }
-        .admin-table { width: 100%; border-collapse: collapse; font-size: .73rem; }
+        .admin-tab:hover { background: var(--bg-elevated); color: var(--text-main); }
+        .admin-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .admin-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
         .admin-table th {
-            text-align: left; padding: 8px 6px;
+            text-align: left; padding: 10px 8px;
             border-bottom: 2px solid var(--border); color: var(--text-soft); font-weight: 600;
         }
-        .admin-table td { padding: 7px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-        .admin-table input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+        .admin-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .admin-table input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
         .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: .65rem; }
         .action-btn {
             background: none; border: 1px solid var(--border); border-radius: 4px;
-            color: var(--text-soft); cursor: pointer; padding: 3px 8px; font-size: .68rem; margin: 0 2px;
+            color: var(--text-soft); cursor: pointer; padding: 8px 12px;
+            font-size: .75rem; margin: 2px; min-height: 36px; min-width: 36px;
             transition: all .15s;
         }
         .action-btn:hover { opacity: .8; }
         .action-btn.danger { color: var(--danger); border-color: var(--danger); }
         .action-btn.success { color: var(--success); border-color: var(--success); }
         .btn {
-            display: inline-block; padding: 8px 18px; border-radius: 6px;
-            border: none; cursor: pointer; font-size: .8rem; font-weight: 500;
-            transition: opacity .15s;
+            display: inline-block; padding: 12px 22px; border-radius: 6px;
+            border: none; cursor: pointer; font-size: .85rem; font-weight: 500;
+            min-height: 44px; transition: opacity .15s;
         }
         .btn:hover { opacity: .85; }
         .btn-primary { background: var(--accent); color: #fff; }
-        .btn-secondary { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-main); }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text-main); }
         .modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
-            z-index: 9999;
+            z-index: 9999; padding: 12px;
+            animation: modal-fade-in .12s ease-out;
         }
+        @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
         .modal-inner {
             background: var(--bg-card); padding: 20px; border-radius: 12px;
-            max-width: 400px; width: 90%; color: var(--text-main);
+            max-width: 500px; width: 100%; color: var(--text-main);
+            max-height: calc(100vh - 24px); overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .modal-inner h3 { margin: 0 0 12px; font-size: .95rem; }
-        .modal-inner label { display: block; font-size: .73rem; color: var(--text-soft); margin: 8px 0 3px; }
-        .modal-inner input, .modal-inner select {
+        .modal-inner label { display: block; font-size: .75rem; color: var(--text-soft); margin: 10px 0 4px; }
+        .modal-inner input, .modal-inner select, .modal-inner textarea {
             width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
-            border-radius: 6px; padding: 6px 8px; color: var(--text-main); font-size: .78rem;
+            border-radius: 6px; padding: 10px; color: var(--text-main); font-size: .85rem;
+            min-height: 44px; /* touch target */
+            font-family: inherit;
+        }
+        .modal-inner textarea { min-height: 88px; resize: vertical; }
+        .modal-inner input:focus, .modal-inner select:focus, .modal-inner textarea:focus {
+            outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft);
         }
         .login-prompt {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 60vh; text-align: center; gap: 1rem;
+            min-height: 60vh; text-align: center; gap: 1rem; padding: 16px;
         }
         select, textarea {
             background: var(--bg-elevated); border: 1px solid var(--border);
-            border-radius: 6px; padding: 6px 8px; color: var(--text-main); font-size: .78rem;
+            border-radius: 6px; padding: 10px; color: var(--text-main); font-size: .85rem;
+            font-family: inherit;
         }
         textarea { width: 100%; resize: vertical; }
         /* Visual cues for the Fleet tab */
@@ -159,22 +199,73 @@
             padding: 3px 6px; border: 1px solid var(--border); text-align: left;
         }
         .handoff-detail .ops-table th { background: var(--bg-card); color: var(--text-soft); }
+        /* ─── Mobile responsive (≤640px) ──────────────────────────── */
+        @media (max-width: 640px) {
+            #mainContent { padding: 8px !important; }
+            .admin-tabs { gap: 4px; margin-bottom: 12px; }
+            .admin-tab {
+                padding: 8px 10px; font-size: .72rem;
+                /* Each tab gets exactly half the row */
+                flex: 1 1 calc(50% - 4px); min-width: 0;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            .admin-table { font-size: .7rem; }
+            .admin-table th, .admin-table td { padding: 7px 4px; }
+            .admin-table th { font-size: .6rem; letter-spacing: .03em; }
+            /* Stat boxes — 3-up on phones, not 6-up */
+            .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .stat-grid .stat-box { min-width: 0 !important; padding: 8px 4px !important; }
+            .stat-grid .stat-box > div:first-child { font-size: 1rem !important; }
+            .stat-grid .stat-box > div:last-child { font-size: .55rem !important; }
+            /* Modals fill the screen edge-to-edge */
+            .modal { padding: 6px; align-items: flex-end; }
+            .modal-inner {
+                max-width: 100%; max-height: 92vh;
+                border-radius: 16px 16px 0 0;
+                animation: modal-slide-up .18s ease-out;
+            }
+            @keyframes modal-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+            .modal-inner h3 { font-size: 1rem; }
+            /* Chip filters — wider tap zone */
+            .filter-chip { padding: 8px 14px; font-size: .73rem; }
+            /* Action buttons inside tables — stack vertically when many */
+            .admin-table td .action-btn { padding: 6px 8px; font-size: .68rem; margin: 2px; }
+            /* Hide non-essential columns on narrow screens */
+            .hide-mobile { display: none !important; }
+            /* Header */
+            .admin-header { flex-direction: column; align-items: stretch !important; gap: 8px; }
+            .admin-header .header-label { display: none; } /* "Admin Dashboard" text hides */
+            /* Failures rows wrap better */
+            .failures-row { flex-wrap: wrap; }
+            .failures-row .name { min-width: 0; flex-basis: 100%; order: 3; padding-left: 78px; }
+            /* Bigger handoff detail */
+            .handoff-detail { font-size: .8rem; }
+            .handoff-detail .kv .k { min-width: 100px; }
+        }
+        /* ─── Tablet (641–960px) — slightly relaxed ──────────────── */
+        @media (min-width: 641px) and (max-width: 960px) {
+            .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        }
     </style>
 </head>
 <body>
     <div id="app">
-        <div style="padding:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
+        <div class="admin-header" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);gap:8px;">
             <h1 style="margin:0;font-size:1.1rem;">⚙️ Admin Dashboard</h1>
-            <button onclick="window.location.href='../'" class="action-btn">← Back to Tracker</button>
+            <button id="backToTracker" class="action-btn">← Back to Tracker</button>
         </div>
         <div style="padding:16px;" id="mainContent">
             <div style="padding:40px;text-align:center;color:var(--text-soft);">Initialising…</div>
         </div>
-        <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;"></div>
+        <div id="adminToasts" style="position:fixed;bottom:12px;right:12px;z-index:9999;max-width:90vw;"></div>
     </div>
 
     <script>
     (function() {
+        // Wire the back button (no inline onclick → safer with strict CSP)
+        var backBtn = document.getElementById('backToTracker');
+        if (backBtn) backBtn.addEventListener('click', function(){ window.location.href = '../'; });
+
         // ── CONFIG & GLOBALS ─────────────────────────────────────────
         // Token is handed off via sessionStorage by admin.js (NOT in URL —
         // URL params leak in browser history, server logs, and Referer headers).
@@ -203,12 +294,22 @@
         var mainEl = document.getElementById('mainContent');
 
         function showLoginPrompt(reason) {
+            // Even though `reason` only takes hardcoded values today, escaping
+            // it here is a cheap safety net for future callers.
             mainEl.innerHTML = '<div class="login-prompt">'
                 + '<div style="font-size:2rem;">🔐</div>'
-                + '<h2>' + (reason || 'Login Required') + '</h2>'
+                + '<h2>' + escSafe(reason || 'Login Required') + '</h2>'
                 + '<p style="color:var(--text-soft);max-width:300px;">Please return to the main app and re-open the dashboard from the admin panel.</p>'
-                + '<button onclick="window.location.href=\'../\'" style="padding:10px 24px;font-size:.9rem;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">← Back to Tracker</button>'
+                + '<button id="loginBackBtn" style="padding:12px 24px;font-size:.9rem;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;min-height:44px;">← Back to Tracker</button>'
                 + '</div>';
+            var b = document.getElementById('loginBackBtn');
+            if (b) b.addEventListener('click', function(){ window.location.href = '../'; });
+        }
+        // Tiny escape used before `esc()` is defined further down. Inlined to
+        // avoid a forward-reference issue.
+        function escSafe(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         }
 
         if (!token) {
@@ -244,10 +345,43 @@
             if (!container) return;
             var toast = document.createElement('div');
             var color = type === 'danger' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--text-main)';
-            toast.style.cssText = 'background:var(--bg-card);border:1px solid '+color+';border-radius:8px;padding:8px 14px;margin:4px 0;font-size:.73rem;color:'+color+';box-shadow:0 2px 8px rgba(0,0,0,.3);';
+            toast.style.cssText = 'background:var(--bg-card);border:1px solid '+color+';border-radius:8px;padding:10px 14px;margin:4px 0;font-size:.8rem;color:'+color+';box-shadow:0 2px 8px rgba(0,0,0,.3);max-width:90vw;';
+            // textContent (NOT innerHTML) so any user-controlled string in `msg`
+            // is rendered as text, not HTML — bulletproof against XSS in toasts.
             toast.textContent = msg;
             container.appendChild(toast);
             setTimeout(function(){ toast.remove(); }, 3500);
+        }
+
+        // ── MODAL HELPERS ────────────────────────────────────────────
+        // Wires ESC-to-close and backdrop-click-to-close on every modal we
+        // insert. Centralised so we only have to think about it once.
+        function wireModalClose(modalId) {
+            var m = document.getElementById(modalId);
+            if (!m) return;
+            // Click on backdrop (the .modal element itself, not inner) closes
+            m.addEventListener('click', function(ev) {
+                if (ev.target === m) m.remove();
+            });
+            // ESC closes whichever modal is topmost
+            var escHandler = function(ev) {
+                if (ev.key === 'Escape') {
+                    var still = document.getElementById(modalId);
+                    if (still) {
+                        still.remove();
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                }
+            };
+            document.addEventListener('keydown', escHandler);
+            // If something else removes the modal, drop our listener too
+            var observer = new MutationObserver(function() {
+                if (!document.getElementById(modalId)) {
+                    document.removeEventListener('keydown', escHandler);
+                    observer.disconnect();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: false });
         }
 
         // ── STATE ────────────────────────────────────────────────────
@@ -360,23 +494,24 @@
             var staleCount      = allVessels.filter(function(v){ var s = staleness(v.updated_at); return s.cls === 'stale'; }).length;
             var failuresCount   = allFailures.length;
 
-            // Stat row — five small KPIs
-            var statsHtml = '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+            // Stat row — six small KPIs. stat-grid + stat-box classes are
+            // styled in the mobile media query to rearrange to 3-up.
+            var statsHtml = '<div class="stat-grid" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;">'+totalVessels+'</div><div style="font-size:.62rem;color:var(--text-soft);">Vessels</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;">'+trackingUsers+'</div><div style="font-size:.62rem;color:var(--text-soft);">Trackings</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;">'+allUsers.length+'</div><div style="font-size:.62rem;color:var(--text-soft);">Users</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
                     +(sanctionedCount?'border:1px solid rgba(255,69,0,.4);':'')+'">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:'+(sanctionedCount?'#ff6b35':'var(--text-main)')+';">'+sanctionedCount+'</div>' +
                     '<div style="font-size:.62rem;color:var(--text-soft);">🚨 Sanctioned</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
                     +(staleCount?'border:1px solid rgba(239,68,68,.4);':'')+'">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:'+(staleCount?'var(--danger)':'var(--text-main)')+';">'+staleCount+'</div>' +
                     '<div style="font-size:.62rem;color:var(--text-soft);">Stale &gt;6h</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;'
                     +(failuresCount?'border:1px solid rgba(239,68,68,.4);':'')+'">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:'+(failuresCount?'var(--danger)':'var(--text-main)')+';">'+failuresCount+'</div>' +
                     '<div style="font-size:.62rem;color:var(--text-soft);">Scrape Fails</div></div>' +
@@ -416,30 +551,37 @@
                         : '';
                     var usersStr = (v.tracking_users || []).map(function(u){ return esc(u.username); }).join(', ') || '<em style="color:var(--text-soft);opacity:.7;">—</em>';
                     return '<tr'+(v.sanctioned?' style="background:rgba(255,69,0,.04);"':'')+'>' +
-                        '<td><input type="checkbox" class="fleet-check" data-imo="'+v.imo+'"></td>' +
+                        '<td><input type="checkbox" class="fleet-check" data-imo="'+esc(String(v.imo))+'"></td>' +
                         '<td>'+esc(v.imo)+'</td>' +
                         '<td>'+esc(v.name || 'IMO '+v.imo)+sancBadge+'</td>' +
                         '<td>'+esc(v.flag || '—')+'</td>' +
-                        '<td>'+(v.status || 'PENDING')+'</td>' +
+                        '<td>'+esc(v.status || 'PENDING')+'</td>' +
                         '<td><span class="stale-dot '+s.cls+'" title="Last AIS update"></span>'+esc(s.label)+'</td>' +
                         '<td>'+usersStr+'</td>' +
-                        '<td><button onclick="window._removeGlobal(\''+v.imo+'\')" class="action-btn danger" title="Remove from ALL trackers">✕</button></td>' +
+                        '<td><button class="action-btn danger js-remove-vessel" data-imo="'+esc(String(v.imo))+'" title="Remove from ALL trackers">✕</button></td>' +
                     '</tr>';
                 }).join('') +
                 '</tbody></table></div>' +
-                '<div style="margin-top:10px;"><button onclick="window._bulkRemove()" class="action-btn danger">🗑 Remove Selected</button></div>';
+                '<div style="margin-top:10px;"><button class="action-btn danger js-bulk-remove">🗑 Remove Selected</button></div>';
 
             cnt.innerHTML = statsHtml + failuresHtml + tableHtml;
 
-            // Wire up "select all" checkbox
+            // Delegated event listeners — no inline onclick anywhere
             var checkAll = document.getElementById('fleetCheckAll');
             if (checkAll) {
-                checkAll.onclick = function() {
+                checkAll.addEventListener('change', function() {
                     document.querySelectorAll('.fleet-check').forEach(function(c){ c.checked = checkAll.checked; });
-                };
+                });
             }
+            cnt.addEventListener('click', function(ev) {
+                var rm = ev.target.closest('.js-remove-vessel');
+                if (rm) { window._removeGlobal(rm.getAttribute('data-imo')); return; }
+                var bulk = ev.target.closest('.js-bulk-remove');
+                if (bulk) { window._bulkRemove(); }
+            });
 
             window._removeGlobal = async function(imo) {
+                if (!/^\d{7}$/.test(String(imo))) { showToast('Invalid IMO format.', 'warning'); return; }
                 if (!confirm('Remove IMO ' + imo + ' from ALL users?')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
@@ -454,8 +596,12 @@
             };
             window._bulkRemove = async function() {
                 var checks = document.querySelectorAll('.fleet-check:checked');
-                var imos = Array.from(checks).map(function(c){ return c.dataset.imo; });
-                if (!imos.length) return;
+                // Sanitise client-side too — only valid 7-digit IMOs are sent
+                var imos = Array.from(checks)
+                    .map(function(c){ return c.dataset.imo; })
+                    .filter(function(i){ return /^\d{7}$/.test(String(i)); });
+                if (!imos.length) { showToast('No vessels selected.', 'warning'); return; }
+                if (imos.length > 100) { showToast('Max 100 at a time.', 'warning'); return; }
                 if (!confirm('Remove ' + imos.length + ' vessel(s) from ALL users?')) return;
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-remove', {
@@ -472,24 +618,66 @@
 
         // ── BULK ADD TAB ─────────────────────────────────────────────
         function renderBulkTab(cnt) {
-            var opts = allUsers.map(function(u){ return '<option value="'+u.id+'">'+esc(u.username)+'</option>'; }).join('');
-            cnt.innerHTML = '<h3>Add Vessels to a User in Bulk</h3>' +
-                '<div style="background:var(--bg-elevated);border-radius:8px;padding:12px;">' +
-                '<label style="font-size:.73rem;">Select user:</label>' +
+            // Sort users alphabetically for usability with many users
+            var sortedUsers = allUsers.slice().sort(function(a, b) {
+                return (a.username || '').localeCompare(b.username || '');
+            });
+            var opts = sortedUsers.map(function(u){
+                return '<option value="'+esc(String(u.id))+'">'+esc(u.username)+'</option>';
+            }).join('');
+            cnt.innerHTML = '<h3 style="margin-bottom:10px;">Add Vessels to a User in Bulk</h3>' +
+                '<div style="background:var(--bg-elevated);border-radius:8px;padding:14px;">' +
+                '<label>Select user:</label>' +
                 '<select id="bulkUser" style="width:100%;margin-bottom:10px;">'+opts+'</select>' +
-                '<label style="font-size:.73rem;">Paste IMOs (one per line, or comma-separated):</label>' +
-                '<textarea id="bulkImo" rows="5" placeholder="IMO1, IMO2, …"></textarea>' +
-                '<button onclick="window._bulkAdd()" class="btn btn-primary" style="margin-top:10px;">Add Vessels</button>' +
-                '<div id="bulkResult" style="margin-top:8px;font-size:.75rem;"></div></div>';
+                '<label>Paste IMOs <span style="color:var(--text-soft);font-weight:normal;">(one per line or comma-separated, max 200)</span></label>' +
+                // maxlength prevents pathological pastes from freezing the page
+                '<textarea id="bulkImo" rows="6" maxlength="20000" placeholder="9123456&#10;9876543&#10;…"></textarea>' +
+                '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">' +
+                    '<button class="btn btn-primary js-bulk-add">Add Vessels</button>' +
+                    '<span id="bulkCount" style="font-size:.72rem;color:var(--text-soft);"></span>' +
+                '</div>' +
+                '<div id="bulkResult" style="margin-top:10px;font-size:.78rem;"></div></div>';
+
+            // Live IMO counter as the admin pastes
+            var ta = document.getElementById('bulkImo');
+            var counter = document.getElementById('bulkCount');
+            function recount() {
+                if (!ta || !counter) return;
+                var found = ta.value.split(/[,\n\s]+/).filter(function(s){ return /^\d{7}$/.test(s.trim()); });
+                counter.textContent = found.length ? '✓ ' + found.length + ' valid IMO' + (found.length === 1 ? '' : 's') + ' detected' : '';
+                counter.style.color = found.length > 200 ? 'var(--warning)' : 'var(--text-soft)';
+            }
+            if (ta) ta.addEventListener('input', recount);
+
+            // Delegated click for the Add button
+            cnt.addEventListener('click', function(ev) {
+                if (ev.target.closest('.js-bulk-add')) window._bulkAdd();
+            });
 
             window._bulkAdd = async function() {
                 var userId = document.getElementById('bulkUser').value;
                 var raw = document.getElementById('bulkImo').value;
-                var imos = raw.split(/[,\n\s]+/).map(function(s){ return s.trim(); }).filter(function(s){ return /^\d{7}$/.test(s); });
-                if (!imos.length) return showToast('No valid IMOs found.', 'warning');
+                if (!userId) { showToast('Pick a user first.', 'warning'); return; }
+                if (raw.length > 20000) { showToast('Input too large.', 'danger'); return; }
+
+                // Dedupe + validate format
+                var imos = [...new Set(
+                    raw.split(/[,\n\s]+/)
+                       .map(function(s){ return s.trim(); })
+                       .filter(function(s){ return /^\d{7}$/.test(s); })
+                )];
+                if (!imos.length) { showToast('No valid IMOs found.', 'warning'); return; }
+                if (imos.length > 200) { showToast('Max 200 IMOs at once. Got ' + imos.length + '.', 'warning'); return; }
+
+                // Checksum validation (catches typos before the round-trip)
                 var invalid = imos.filter(function(i){ return !validateIMO(i); });
-                if (invalid.length) { showToast(invalid.length + ' IMO(s) fail checksum: ' + invalid.join(', '), 'danger'); return; }
-                document.getElementById('bulkResult').innerText = 'Sending…';
+                if (invalid.length) {
+                    showToast(invalid.length + ' IMO(s) fail checksum: ' + invalid.slice(0, 5).join(', ') + (invalid.length > 5 ? '…' : ''), 'danger');
+                    return;
+                }
+
+                var resultEl = document.getElementById('bulkResult');
+                if (resultEl) { resultEl.textContent = 'Sending…'; resultEl.style.color = 'var(--text-soft)'; }
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/fleet/bulk-add', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -498,10 +686,18 @@
                     var data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Request failed');
                     document.getElementById('bulkImo').value = '';
-                    document.getElementById('bulkResult').innerHTML = '✅ ' + (data.added||0) + ' added, ' + (data.skipped||0) + ' skipped.';
+                    if (counter) counter.textContent = '';
+                    // textContent — never innerHTML — so server-controlled values are inert
+                    if (resultEl) {
+                        resultEl.textContent = '✅ ' + (data.added||0) + ' added, ' + (data.skipped||0) + ' skipped.';
+                        resultEl.style.color = 'var(--success)';
+                    }
                     showToast('Bulk add complete', 'success');
                 } catch(e) {
-                    document.getElementById('bulkResult').innerHTML = '<span style="color:var(--danger);">Error: '+esc(e.message)+'</span>';
+                    if (resultEl) {
+                        resultEl.textContent = 'Error: ' + e.message;
+                        resultEl.style.color = 'var(--danger)';
+                    }
                     showToast('Bulk add failed', 'danger');
                 }
             };
@@ -509,27 +705,55 @@
 
         // ── USERS TAB ────────────────────────────────────────────────
         function renderUsersTab(cnt) {
-            cnt.innerHTML = '<button onclick="window._addUserModal()" class="btn btn-primary" style="margin-bottom:12px;">+ Add New User</button>' +
-                '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Username</th><th>Last Login</th><th>Fleet</th><th>CallMeBot</th><th>Status</th><th>Actions</th></tr></thead>' +
-                '<tbody>' + allUsers.map(function(u) {
+            cnt.innerHTML =
+                '<button class="btn btn-primary js-add-user" style="margin-bottom:12px;">+ Add New User</button>' +
+                '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr>' +
+                    '<th>Username</th>' +
+                    '<th>Last Login</th>' +
+                    '<th class="hide-mobile">Fleet</th>' +
+                    '<th class="hide-mobile">CallMeBot</th>' +
+                    '<th>Status</th>' +
+                    '<th>Actions</th>' +
+                '</tr></thead><tbody>' +
+                allUsers.map(function(u) {
                     var badge = u.is_frozen ? '<span class="badge" style="background:rgba(239,68,68,.2);color:var(--danger);">Frozen</span>' :
                         (!u.can_add_vessels ? '<span class="badge" style="background:rgba(245,158,11,.2);color:var(--warning);">Ban Add</span>' : '<span class="badge" style="background:rgba(34,197,94,.2);color:var(--success);">Active</span>');
                     var lastLoginCell = u.last_login_at
                         ? '<span title="' + esc(formatAbsolute(u.last_login_at)) + '">' + esc(formatRelative(u.last_login_at)) + '</span>'
                         : '<span style="color:var(--text-soft);opacity:.6;" title="Has not logged in since this column existed">never</span>';
+                    var safeId = esc(String(u.id));
                     return '<tr>' +
                         '<td>'+esc(u.username)+'</td>' +
                         '<td>'+lastLoginCell+'</td>' +
-                        '<td>'+(u.vessels ? u.vessels.length : 0)+'</td>' +
-                        '<td>'+(u.callmebot_enabled ? 'ON' : 'OFF')+'</td>' +
+                        '<td class="hide-mobile">'+(u.vessels ? u.vessels.length : 0)+'</td>' +
+                        '<td class="hide-mobile">'+(u.callmebot_enabled ? 'ON' : 'OFF')+'</td>' +
                         '<td>'+badge+'</td>' +
                         '<td>' +
-                            '<button onclick="window._toggleFreeze(\''+u.id+'\','+!!u.is_frozen+')" class="action-btn '+(u.is_frozen?'success':'danger')+'">'+(u.is_frozen?'Unfreeze':'Freeze')+'</button> ' +
-                            '<button onclick="window._toggleBan(\''+u.id+'\','+!!u.can_add_vessels+')" class="action-btn '+(u.can_add_vessels?'danger':'success')+'">'+(u.can_add_vessels?'Ban':'Allow')+'</button> ' +
-                            '<button onclick="window._editUser(\''+u.id+'\')" class="action-btn">✏️</button> ' +
-                            '<button onclick="window._deleteUser(\''+u.id+'\')" class="action-btn danger">🗑</button>' +
+                            '<button class="action-btn '+(u.is_frozen?'success':'danger')+' js-user-action" '
+                                +'data-action="freeze" data-uid="'+safeId+'" data-current="'+(!!u.is_frozen)+'">'
+                                +(u.is_frozen?'Unfreeze':'Freeze')+'</button> ' +
+                            '<button class="action-btn '+(u.can_add_vessels?'danger':'success')+' js-user-action" '
+                                +'data-action="ban" data-uid="'+safeId+'" data-current="'+(!!u.can_add_vessels)+'">'
+                                +(u.can_add_vessels?'Ban':'Allow')+'</button> ' +
+                            '<button class="action-btn js-user-action" data-action="edit" data-uid="'+safeId+'" title="Edit">✏️</button> ' +
+                            '<button class="action-btn danger js-user-action" data-action="delete" data-uid="'+safeId+'" title="Delete">🗑</button>' +
                         '</td></tr>';
                 }).join('') + '</tbody></table></div>';
+
+            // Single delegated listener for the entire tab — bulletproof & cheap
+            cnt.addEventListener('click', function(ev) {
+                var addBtn = ev.target.closest('.js-add-user');
+                if (addBtn) { window._addUserModal(); return; }
+                var btn = ev.target.closest('.js-user-action');
+                if (!btn) return;
+                var act  = btn.getAttribute('data-action');
+                var uid  = btn.getAttribute('data-uid');
+                var curr = btn.getAttribute('data-current') === 'true';
+                if (act === 'freeze') window._toggleFreeze(uid, curr);
+                if (act === 'ban')    window._toggleBan(uid, curr);
+                if (act === 'edit')   window._editUser(uid);
+                if (act === 'delete') window._deleteUser(uid);
+            });
 
             window._toggleFreeze = async function(uid, current) {
                 if (!confirm((current?'Unfreeze':'Freeze')+' this user?')) return;
@@ -565,14 +789,23 @@
                 document.body.insertAdjacentHTML('beforeend',
                     '<div class="modal" id="userEditModal"><div class="modal-inner">' +
                     '<h3>Edit '+esc(u.username)+'</h3>' +
-                    '<label>Phone</label><input id="euPhone" value="'+esc(u.callmebot_phone||'')+'">' +
-                    '<label>API Key</label><input id="euApikey" value="'+esc(u.callmebot_apikey||'')+'">' +
+                    '<label>Phone</label><input id="euPhone" maxlength="32" value="'+esc(u.callmebot_phone||'')+'">' +
+                    '<label>API Key</label><input id="euApikey" maxlength="64" value="'+esc(u.callmebot_apikey||'')+'">' +
                     '<label>CallMeBot</label><select id="euCm"><option value="true" '+(u.callmebot_enabled?'selected':'')+'>ON</option><option value="false" '+(!u.callmebot_enabled?'selected':'')+'>OFF</option></select>' +
-                    '<label>New PIN (optional)</label><input id="euPin" type="number" min="1000" max="999999">' +
-                    '<div style="margin-top:12px;display:flex;gap:8px;">' +
-                    '<button onclick="window._saveEdit(\''+uid+'\')" class="btn btn-primary">Save</button>' +
-                    '<button onclick="document.getElementById(\'userEditModal\').remove()" class="btn btn-secondary">Cancel</button>' +
+                    '<label>New PIN (optional)</label><input id="euPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="\\d{4,6}" minlength="4" maxlength="6">' +
+                    '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
+                    '<button class="btn btn-secondary" data-action="cancel-edit">Cancel</button>' +
+                    '<button class="btn btn-primary" data-action="save-edit" data-uid="'+esc(uid)+'">Save</button>' +
                     '</div></div></div>');
+                // Wire actions via delegation — no inline JS, no onclick attrs
+                var modal = document.getElementById('userEditModal');
+                modal.addEventListener('click', function(ev) {
+                    var btn = ev.target.closest('button[data-action]'); if (!btn) return;
+                    var act = btn.getAttribute('data-action');
+                    if (act === 'cancel-edit') { modal.remove(); return; }
+                    if (act === 'save-edit')   { window._saveEdit(btn.getAttribute('data-uid')); }
+                });
+                wireModalClose('userEditModal');
             };
             window._saveEdit = async function(uid) {
                 var phone = document.getElementById('euPhone').value.trim();
@@ -626,24 +859,42 @@
                 var m = document.getElementById('addUserModal'); if (m) m.remove();
                 document.body.insertAdjacentHTML('beforeend',
                     '<div class="modal" id="addUserModal"><div class="modal-inner"><h3>New User</h3>' +
-                    '<input id="nuName" placeholder="Username"><br>' +
-                    '<input id="nuPin" type="number" placeholder="PIN (4-6 digits)" min="1000" max="999999"><br>' +
-                    '<div style="margin-top:12px;display:flex;gap:8px;">' +
-                    '<button onclick="window._createUser()" class="btn btn-primary">Create</button>' +
-                    '<button onclick="document.getElementById(\'addUserModal\').remove()" class="btn btn-secondary">Cancel</button>' +
+                    '<label>Username</label>' +
+                    '<input id="nuName" placeholder="3-32 chars, letters/digits/underscore" maxlength="32" autocomplete="off" spellcheck="false">' +
+                    '<label>PIN (4-6 digits)</label>' +
+                    '<input id="nuPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="\\d{4,6}" minlength="4" maxlength="6" placeholder="••••">' +
+                    '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
+                    '<button class="btn btn-secondary" data-action="cancel-create">Cancel</button>' +
+                    '<button class="btn btn-primary" data-action="create-user">Create</button>' +
                     '</div></div></div>');
+                var modal = document.getElementById('addUserModal');
+                modal.addEventListener('click', function(ev) {
+                    var btn = ev.target.closest('button[data-action]'); if (!btn) return;
+                    var act = btn.getAttribute('data-action');
+                    if (act === 'cancel-create') { modal.remove(); return; }
+                    if (act === 'create-user')   { window._createUser(); }
+                });
+                wireModalClose('addUserModal');
+                // Auto-focus the first field
+                setTimeout(function(){ var f = document.getElementById('nuName'); if (f) f.focus(); }, 60);
             };
             window._createUser = async function() {
                 var name = document.getElementById('nuName').value.trim();
-                var pin = document.getElementById('nuPin').value.trim();
-                if (!name || !/^\d{4,6}$/.test(pin)) { showToast('Invalid username or PIN', 'warning'); return; }
+                var pin  = document.getElementById('nuPin').value.trim();
+                // Stricter validation than before — match the worker's regex
+                if (!/^[a-zA-Z0-9_]{3,32}$/.test(name)) {
+                    showToast('Username: 3-32 chars, letters/digits/underscore only.', 'warning'); return;
+                }
+                if (!/^\d{4,6}$/.test(pin)) {
+                    showToast('PIN must be 4-6 digits.', 'warning'); return;
+                }
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
                         body: JSON.stringify({ admin_token: token, username: name, pin: pin })
                     });
-                    if (!res.ok) { var e = await res.json(); throw new Error(e.error||'Creation failed'); }
+                    if (!res.ok) { var e = await res.json().catch(function(){ return {}; }); throw new Error(e.error||'Creation failed'); }
                     var m = document.getElementById('addUserModal'); if (m) m.remove();
                     showToast('User created', 'success');
                     await loadData(); switchTab('users');
@@ -680,23 +931,24 @@
         function paintHandoffs(cnt) {
             var s = handoffStats || { total:0, sof:0, dossier:0, pending:0, accepted:0, declined:0 };
 
-            // Top stats row
-            var statsHtml = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+            // Top stats row — stat-grid class so mobile media query rearranges to 3-up
+            var statsHtml = '<div class="stat-grid" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;">'+s.total+'</div><div style="font-size:.62rem;color:var(--text-soft);">Total</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:#38bdf8;">'+s.sof+'</div><div style="font-size:.62rem;color:var(--text-soft);">SOF</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:#c084fc;">'+s.dossier+'</div><div style="font-size:.62rem;color:var(--text-soft);">Dossier</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:var(--warning);">'+s.pending+'</div><div style="font-size:.62rem;color:var(--text-soft);">Pending</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:var(--success);">'+s.accepted+'</div><div style="font-size:.62rem;color:var(--text-soft);">Accepted</div></div>' +
-                '<div style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
+                '<div class="stat-box" style="flex:1;min-width:90px;background:var(--bg-elevated);border-radius:8px;padding:8px;text-align:center;">' +
                     '<div style="font-size:1.2rem;font-weight:700;color:var(--danger);">'+s.declined+'</div><div style="font-size:.62rem;color:var(--text-soft);">Declined</div></div>' +
                 '</div>';
 
-            // Filter chips — all / sof / dossier / pending / accepted / declined
+            // Filter chips — all / sof / dossier / pending / accepted / declined.
+            // No inline onclick — delegated below.
             var chips = [
                 { id: 'all',      label: 'All ('+s.total+')' },
                 { id: 'sof',      label: 'SOF ('+s.sof+')' },
@@ -705,12 +957,12 @@
                 { id: 'accepted', label: 'Accepted ('+s.accepted+')' },
                 { id: 'declined', label: 'Declined ('+s.declined+')' }
             ];
-            var chipsHtml = '<div style="margin-bottom:10px;">' +
+            var chipsHtml = '<div style="margin-bottom:10px;display:flex;flex-wrap:wrap;align-items:center;">' +
                 chips.map(function(c){
                     return '<button class="filter-chip ' + (handoffFilter === c.id ? 'active' : '') + '" '
-                         + 'onclick="window._setHandoffFilter(\'' + c.id + '\')">' + esc(c.label) + '</button>';
+                         + 'data-filter-id="' + esc(c.id) + '">' + esc(c.label) + '</button>';
                 }).join('') +
-                '<button onclick="window._reloadHandoffs()" class="filter-chip" style="margin-left:auto;float:right;">🔄 Refresh</button>' +
+                '<button class="filter-chip js-handoff-refresh" style="margin-left:auto;">🔄 Refresh</button>' +
                 '</div>';
 
             // Apply filter
@@ -730,17 +982,22 @@
                         '<th>Status</th><th>Responded</th><th></th>' +
                     '</tr></thead><tbody>' +
                     filtered.map(function(h) {
+                        // Whitelist server-supplied values used as class names
+                        // — even though we control the worker, defence-in-depth
+                        // means we never paste arbitrary strings into class="…".
+                        var safeType   = (h.type === 'sof' || h.type === 'dossier') ? h.type : 'sof';
+                        var safeStatus = (h.status === 'pending' || h.status === 'accepted' || h.status === 'declined') ? h.status : 'pending';
                         var notesAttr = h.notes ? ' title="' + esc(h.notes) + '"' : '';
                         return '<tr' + notesAttr + '>' +
-                            '<td><span class="handoff-type ' + h.type + '">' + h.type.toUpperCase() + '</span></td>' +
+                            '<td><span class="handoff-type ' + safeType + '">' + safeType.toUpperCase() + '</span></td>' +
                             '<td><span title="' + esc(formatAbsolute(h.created_at)) + '">' + esc(formatRelative(h.created_at)) + '</span></td>' +
                             '<td>' + esc(h.from_username || '?') + ' → <strong>' + esc(h.to_username || '?') + '</strong></td>' +
                             '<td>' + esc(h.vessel_name || '') + ' <span style="color:var(--text-soft);">(' + esc(h.imo) + ')</span></td>' +
-                            '<td><span class="handoff-pill ' + h.status + '">' + h.status.toUpperCase() + '</span></td>' +
+                            '<td><span class="handoff-pill ' + safeStatus + '">' + safeStatus.toUpperCase() + '</span></td>' +
                             '<td>' + (h.responded_at
                                 ? '<span title="' + esc(formatAbsolute(h.responded_at)) + '">' + esc(formatRelative(h.responded_at)) + '</span>'
                                 : '<span style="color:var(--text-soft);opacity:.5;">—</span>') + '</td>' +
-                            '<td><button class="action-btn js-view-handoff" data-handoff-type="' + esc(h.type) + '" data-handoff-id="' + esc(String(h.id)) + '" title="View full content">👁 View</button></td>' +
+                            '<td><button class="action-btn js-view-handoff" data-handoff-type="' + safeType + '" data-handoff-id="' + esc(String(h.id)) + '" title="View full content">👁 View</button></td>' +
                         '</tr>';
                     }).join('') +
                     '</tbody></table></div>';
@@ -748,15 +1005,19 @@
 
             cnt.innerHTML = statsHtml + chipsHtml + tableHtml;
 
-            // Event delegation — wire all View buttons in this tab. Using
-            // delegation (instead of inline onclick) means special characters
-            // in IDs or types can never break the onclick attribute syntax.
-            cnt.querySelectorAll('.js-view-handoff').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var t = btn.getAttribute('data-handoff-type');
-                    var i = btn.getAttribute('data-handoff-id');
-                    window._viewHandoff(t, i);
-                });
+            // ONE delegated listener handles every button in the tab — chips,
+            // refresh, and view. Cheaper than N listeners and bulletproof
+            // against re-renders.
+            cnt.addEventListener('click', function(ev) {
+                var view = ev.target.closest('.js-view-handoff');
+                if (view) {
+                    window._viewHandoff(view.getAttribute('data-handoff-type'), view.getAttribute('data-handoff-id'));
+                    return;
+                }
+                var refresh = ev.target.closest('.js-handoff-refresh');
+                if (refresh) { window._reloadHandoffs(); return; }
+                var chip = ev.target.closest('button[data-filter-id]');
+                if (chip) { window._setHandoffFilter(chip.getAttribute('data-filter-id')); }
             });
         }
 
@@ -781,8 +1042,16 @@
                     '<div class="handoff-detail" id="handoffDetailBody">'
                     + '<div style="padding:20px;text-align:center;color:var(--text-soft);">Fetching handoff…</div></div>' +
                     '<div style="margin-top:12px;text-align:right;">' +
-                    '<button onclick="document.getElementById(\'handoffViewModal\').remove()" class="btn btn-secondary">Close</button>' +
+                    '<button class="btn btn-secondary" data-action="close-handoff">Close</button>' +
                     '</div></div></div>');
+                wireModalClose('handoffViewModal');
+                var hvm = document.getElementById('handoffViewModal');
+                if (hvm) {
+                    hvm.addEventListener('click', function(ev){
+                        var btn = ev.target.closest('button[data-action="close-handoff"]');
+                        if (btn) hvm.remove();
+                    });
+                }
             } catch(e) {
                 // If the modal can't be inserted (extremely unusual), fall back to a toast
                 console.error('[_viewHandoff] modal insertion failed:', e);
@@ -959,7 +1228,7 @@
                 '<div class="modal-inner" style="max-width:520px;">' +
                     '<h3>📢 Broadcast Push Notification</h3>' +
                     '<label>Recipients</label>' +
-                    '<select id="bcRecipients" onchange="window._bcToggleUserList()">' +
+                    '<select id="bcRecipients">' +
                         '<option value="all">All users (with push subscription)</option>' +
                         '<option value="active">Active users only (skip frozen)</option>' +
                         '<option value="selected">Select users…</option>' +
@@ -968,8 +1237,8 @@
                     '<div id="bcUserList" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);' +
                         'border-radius:6px;padding:8px;background:var(--bg-elevated);margin-top:6px;">' +
                         '<div style="display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border);">' +
-                            '<button onclick="window._bcSelectAll(true)" class="action-btn" style="flex:1;">Select all</button>' +
-                            '<button onclick="window._bcSelectAll(false)" class="action-btn" style="flex:1;">Clear</button>' +
+                            '<button class="action-btn" data-bc-action="select-all" style="flex:1;">Select all</button>' +
+                            '<button class="action-btn" data-bc-action="clear-all" style="flex:1;">Clear</button>' +
                         '</div>' +
                         userCheckboxes +
                     '</div>' +
@@ -981,10 +1250,25 @@
                     '<textarea id="bcMsg" rows="4" maxlength="500" placeholder="Your announcement…"></textarea>' +
 
                     '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
-                        '<button onclick="document.getElementById(\'broadcastModal\').remove()" class="btn btn-secondary">Cancel</button>' +
-                        '<button onclick="window._sendBroadcast()" class="btn btn-primary">📤 Send</button>' +
+                        '<button class="btn btn-secondary" data-bc-action="cancel">Cancel</button>' +
+                        '<button class="btn btn-primary" data-bc-action="send">📤 Send</button>' +
                     '</div>' +
                 '</div></div>');
+
+            // Delegated event handlers — replaces all the old inline onclick
+            var bcModal = document.getElementById('broadcastModal');
+            bcModal.addEventListener('click', function(ev) {
+                var btn = ev.target.closest('button[data-bc-action]'); if (!btn) return;
+                var act = btn.getAttribute('data-bc-action');
+                if (act === 'cancel')     { bcModal.remove(); return; }
+                if (act === 'select-all') { window._bcSelectAll(true);  return; }
+                if (act === 'clear-all')  { window._bcSelectAll(false); return; }
+                if (act === 'send')       { window._sendBroadcast(); }
+            });
+            // Listen on the dropdown via change event (avoids inline onchange)
+            var bcSel = document.getElementById('bcRecipients');
+            if (bcSel) bcSel.addEventListener('change', window._bcToggleUserList);
+            wireModalClose('broadcastModal');
         };
 
         window._bcToggleUserList = function() {
@@ -1061,12 +1345,15 @@
 
         // ── INIT ─────────────────────────────────────────────────────
         mainEl.innerHTML =
-            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
-                '<div style="font-size:.75rem;color:var(--text-soft);">Admin Dashboard</div>' +
-                '<button onclick="window._broadcastModal()" class="btn btn-primary" style="padding:6px 14px;font-size:.78rem;">📢 Broadcast</button>' +
+            '<div class="admin-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
+                '<div class="header-label" style="font-size:.78rem;color:var(--text-soft);">Admin Dashboard</div>' +
+                '<button id="broadcastBtn" class="btn btn-primary" style="padding:10px 16px;font-size:.8rem;">📢 Broadcast</button>' +
             '</div>' +
-            '<div class="admin-tabs" id="tabs"></div>' +
+            '<div class="admin-tabs" id="tabs" role="tablist"></div>' +
             '<div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div></div>';
+        // Wire the broadcast button via addEventListener (no inline onclick)
+        var bcBtn = document.getElementById('broadcastBtn');
+        if (bcBtn) bcBtn.addEventListener('click', function(){ window._broadcastModal(); });
 
         var tabDefs = [
             { id:'fleet',    label:'🚢 Fleet Manager' },
@@ -1079,8 +1366,10 @@
             var b = document.createElement('button');
             b.className = 'admin-tab';
             b.setAttribute('data-id', t.id);
+            b.setAttribute('role', 'tab');
+            b.setAttribute('type', 'button');
             b.textContent = t.label;
-            b.onclick = function(){ switchTab(t.id); };
+            b.addEventListener('click', function(){ switchTab(t.id); });
             tabsEl.appendChild(b);
         });
 
