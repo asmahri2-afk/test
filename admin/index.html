@@ -112,11 +112,21 @@
         }
         .modal-inner h3 { margin: 0 0 12px; font-size: .95rem; }
         .modal-inner label { display: block; font-size: .75rem; color: var(--text-soft); margin: 10px 0 4px; }
-        .modal-inner input, .modal-inner select, .modal-inner textarea {
+        /* Apply only to text/select/textarea — NOT checkboxes/radios.
+           Without :not() filters, checkboxes inherit width:100%/min-height:44px
+           and become absurdly large. */
+        .modal-inner input:not([type="checkbox"]):not([type="radio"]),
+        .modal-inner select,
+        .modal-inner textarea {
             width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
             border-radius: 6px; padding: 10px; color: var(--text-main); font-size: .85rem;
             min-height: 44px; /* touch target */
             font-family: inherit;
+        }
+        .modal-inner input[type="checkbox"], .modal-inner input[type="radio"] {
+            width: 18px; height: 18px; min-height: 0; padding: 0;
+            accent-color: var(--accent); cursor: pointer;
+            vertical-align: middle; flex-shrink: 0;
         }
         .modal-inner textarea { min-height: 88px; resize: vertical; }
         .modal-inner input:focus, .modal-inner select:focus, .modal-inner textarea:focus {
@@ -780,6 +790,12 @@
 
             window._toggleFreeze = async function(uid, current) {
                 if (!confirm((current?'Unfreeze':'Freeze')+' this user?')) return;
+                // Optimistic update — flip the local flag immediately and
+                // re-render just this tab. Saves ~500ms-5s of /admin/full-data
+                // round-trip. We roll back if the server call fails.
+                var u = allUsers.find(function(x){ return x.id === uid; });
+                if (u) u.is_frozen = !current;
+                renderUsersTab(document.getElementById('tabContent'));
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
                         method: 'POST',
@@ -788,11 +804,18 @@
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('Status updated', 'success');
-                    await loadData(); switchTab('users');
-                } catch(e) { showToast(e.message, 'danger'); }
+                } catch(e) {
+                    // Roll back the optimistic update
+                    if (u) u.is_frozen = current;
+                    renderUsersTab(document.getElementById('tabContent'));
+                    showToast(e.message, 'danger');
+                }
             };
             window._toggleBan = async function(uid, current) {
                 if (!confirm((current?'Ban':'Allow')+' adding vessels?')) return;
+                var u = allUsers.find(function(x){ return x.id === uid; });
+                if (u) u.can_add_vessels = !current;
+                renderUsersTab(document.getElementById('tabContent'));
                 try {
                     var res = await api(window.CONFIG.WORKER_URL + '/admin/user/status', {
                         method: 'POST',
@@ -801,8 +824,11 @@
                     });
                     if (!res.ok) throw new Error('Failed');
                     showToast('Status updated', 'success');
-                    await loadData(); switchTab('users');
-                } catch(e) { showToast(e.message, 'danger'); }
+                } catch(e) {
+                    if (u) u.can_add_vessels = current;
+                    renderUsersTab(document.getElementById('tabContent'));
+                    showToast(e.message, 'danger');
+                }
             };
             window._editUser = function(uid) {
                 var u = allUsers.find(function(x){ return x.id === uid; });
