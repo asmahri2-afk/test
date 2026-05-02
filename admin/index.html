@@ -759,42 +759,90 @@
         };
 
         window._viewHandoff = async function(type, id) {
-            // Open modal placeholder immediately so the admin gets feedback
-            var existing = document.getElementById('handoffViewModal');
-            if (existing) existing.remove();
-            document.body.insertAdjacentHTML('beforeend',
-                '<div class="modal" id="handoffViewModal">' +
-                '<div class="modal-inner" style="max-width:640px;">' +
-                '<h3>Loading…</h3>' +
-                '<div class="handoff-detail" id="handoffDetailBody">'
-                + '<div style="padding:20px;text-align:center;color:var(--text-soft);">Fetching handoff…</div></div>' +
-                '<div style="margin-top:12px;text-align:right;">' +
-                '<button onclick="document.getElementById(\'handoffViewModal\').remove()" class="btn btn-secondary">Close</button>' +
-                '</div></div></div>');
+            try {
+                // Open modal placeholder immediately so the admin gets visual feedback
+                var existing = document.getElementById('handoffViewModal');
+                if (existing) existing.remove();
+                document.body.insertAdjacentHTML('beforeend',
+                    '<div class="modal" id="handoffViewModal">' +
+                    '<div class="modal-inner" style="max-width:640px;">' +
+                    '<h3>Loading…</h3>' +
+                    '<div class="handoff-detail" id="handoffDetailBody">'
+                    + '<div style="padding:20px;text-align:center;color:var(--text-soft);">Fetching handoff…</div></div>' +
+                    '<div style="margin-top:12px;text-align:right;">' +
+                    '<button onclick="document.getElementById(\'handoffViewModal\').remove()" class="btn btn-secondary">Close</button>' +
+                    '</div></div></div>');
+            } catch(e) {
+                // If the modal can't be inserted (extremely unusual), fall back to a toast
+                console.error('[_viewHandoff] modal insertion failed:', e);
+                showToast('Could not open handoff view: ' + e.message, 'danger');
+                return;
+            }
+
+            // The handoff list (allHandoffs) already has everything except draft_data.
+            // We pre-populate the modal from it so the user sees something even if
+            // the worker route isn't deployed yet.
+            var fallback = (allHandoffs || []).find(function(h) {
+                return h.type === type && String(h.id) === String(id);
+            });
+            if (fallback) {
+                paintHandoffModal(Object.assign({}, fallback, { _partial: true }));
+            }
 
             try {
                 var res = await api(window.CONFIG.WORKER_URL + '/admin/handoff/' + type + '/' + id,
                     { headers: { Authorization: 'Bearer ' + token } }, 10000);
+
+                if (res.status === 404) {
+                    // Two sub-cases — the route exists but the row is gone, OR the
+                    // route doesn't exist on the worker yet. Both arrive as 404; we
+                    // tell them apart by the response shape (our route returns
+                    // {error:'Handoff not found'}, the default returns {error:'Not found'}).
+                    var errBody = await res.json().catch(function(){ return {}; });
+                    var routeMissing = errBody.error === 'Not found';
+                    if (routeMissing && fallback) {
+                        // We already painted the partial — append a hint banner.
+                        var bodyEl = document.getElementById('handoffDetailBody');
+                        if (bodyEl) {
+                            bodyEl.insertAdjacentHTML('afterbegin',
+                                '<div style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);'
+                                + 'border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:.7rem;color:var(--warning);">'
+                                + '⚠️ Worker route not deployed yet — showing partial data from list. '
+                                + 'Redeploy <code>Cloudflare_worker.js</code> to see <code>draft_data</code>.</div>');
+                        }
+                        return;
+                    }
+                    // Row really doesn't exist
+                    var body1 = document.getElementById('handoffDetailBody');
+                    if (body1) body1.innerHTML = '<div style="color:var(--danger);padding:10px;">Handoff #' + esc(String(id)) + ' not found in database.</div>';
+                    return;
+                }
+
                 if (!res.ok) {
                     var err = await res.json().catch(function(){ return {}; });
                     throw new Error(err.error || 'HTTP ' + res.status);
                 }
                 var data = await res.json();
-                var h = data.handoff;
-                var modal = document.getElementById('handoffViewModal');
-                if (!modal) return;
-
-                modal.querySelector('h3').innerHTML =
-                    '<span class="handoff-type ' + h.type + '">' + h.type.toUpperCase() + '</span> '
-                    + esc(h.vessel_name || ('IMO ' + h.imo))
-                    + ' <span class="handoff-pill ' + h.status + '" style="margin-left:6px;">' + h.status + '</span>';
-
-                document.getElementById('handoffDetailBody').innerHTML = renderHandoffDetail(h);
+                paintHandoffModal(data.handoff);
             } catch(e) {
-                var body = document.getElementById('handoffDetailBody');
-                if (body) body.innerHTML = '<div style="color:var(--danger);padding:10px;">' + esc(e.message) + '</div>';
+                console.error('[_viewHandoff] fetch failed:', e);
+                var body2 = document.getElementById('handoffDetailBody');
+                if (body2) body2.innerHTML = '<div style="color:var(--danger);padding:10px;">' + esc(e.message) + '</div>';
             }
         };
+
+        // Paint the modal contents — pulled out so the fallback path can reuse it.
+        function paintHandoffModal(h) {
+            var modal = document.getElementById('handoffViewModal');
+            if (!modal) return;
+            var hd = modal.querySelector('h3');
+            if (hd) hd.innerHTML =
+                '<span class="handoff-type ' + h.type + '">' + h.type.toUpperCase() + '</span> '
+                + esc(h.vessel_name || ('IMO ' + h.imo))
+                + ' <span class="handoff-pill ' + h.status + '" style="margin-left:6px;">' + h.status + '</span>';
+            var body = document.getElementById('handoffDetailBody');
+            if (body) body.innerHTML = renderHandoffDetail(h);
+        }
 
         // Render the handoff body — generic for both SOF and dossier.
         // SOF draft_data is a flat-ish object with the form fields the user
@@ -871,8 +919,143 @@
             catch(_) { return '<span style="color:var(--text-soft);">[unserialisable]</span>'; }
         }
 
+        // ── BROADCAST PUSH NOTIFICATIONS ─────────────────────────────
+        // Three recipient modes: All (everyone with a push subscription),
+        // Active (allUsers minus frozen — uses already-loaded list, no extra query),
+        // or Select (checklist of all users).
+        window._broadcastModal = function() {
+            var existing = document.getElementById('broadcastModal');
+            if (existing) existing.remove();
+
+            // We need allUsers loaded for the Active and Select modes. If the
+            // admin opens broadcast before /admin/full-data has returned, prompt.
+            if (!allUsers || !allUsers.length) {
+                showToast('User list not loaded yet. Try again in a second.', 'warning');
+                return;
+            }
+
+            var userCheckboxes = allUsers.map(function(u) {
+                var label = esc(u.username);
+                if (u.is_frozen) label += ' <span style="color:var(--danger);font-size:.65rem;">(frozen)</span>';
+                else if (!u.can_add_vessels) label += ' <span style="color:var(--warning);font-size:.65rem;">(restricted)</span>';
+                return '<label style="display:flex;align-items:center;gap:6px;font-size:.73rem;padding:3px 0;cursor:pointer;">' +
+                    '<input type="checkbox" class="bc-user-check" value="' + esc(u.id) + '"> ' + label +
+                '</label>';
+            }).join('');
+
+            document.body.insertAdjacentHTML('beforeend',
+                '<div class="modal" id="broadcastModal">' +
+                '<div class="modal-inner" style="max-width:520px;">' +
+                    '<h3>📢 Broadcast Push Notification</h3>' +
+                    '<label>Recipients</label>' +
+                    '<select id="bcRecipients" onchange="window._bcToggleUserList()">' +
+                        '<option value="all">All users (with push subscription)</option>' +
+                        '<option value="active">Active users only (skip frozen)</option>' +
+                        '<option value="selected">Select users…</option>' +
+                    '</select>' +
+
+                    '<div id="bcUserList" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);' +
+                        'border-radius:6px;padding:8px;background:var(--bg-elevated);margin-top:6px;">' +
+                        '<div style="display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border);">' +
+                            '<button onclick="window._bcSelectAll(true)" class="action-btn" style="flex:1;">Select all</button>' +
+                            '<button onclick="window._bcSelectAll(false)" class="action-btn" style="flex:1;">Clear</button>' +
+                        '</div>' +
+                        userCheckboxes +
+                    '</div>' +
+
+                    '<label style="margin-top:10px;">Title <span style="color:var(--text-soft);font-weight:normal;">(max 80)</span></label>' +
+                    '<input id="bcTitle" maxlength="80" placeholder="🚢 Quick update">' +
+
+                    '<label style="margin-top:6px;">Message <span style="color:var(--text-soft);font-weight:normal;">(max 500)</span></label>' +
+                    '<textarea id="bcMsg" rows="4" maxlength="500" placeholder="Your announcement…"></textarea>' +
+
+                    '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
+                        '<button onclick="document.getElementById(\'broadcastModal\').remove()" class="btn btn-secondary">Cancel</button>' +
+                        '<button onclick="window._sendBroadcast()" class="btn btn-primary">📤 Send</button>' +
+                    '</div>' +
+                '</div></div>');
+        };
+
+        window._bcToggleUserList = function() {
+            var sel = document.getElementById('bcRecipients');
+            var list = document.getElementById('bcUserList');
+            if (sel && list) list.style.display = sel.value === 'selected' ? 'block' : 'none';
+        };
+
+        window._bcSelectAll = function(state) {
+            document.querySelectorAll('.bc-user-check').forEach(function(c) { c.checked = !!state; });
+        };
+
+        window._sendBroadcast = async function() {
+            var titleEl = document.getElementById('bcTitle');
+            var msgEl   = document.getElementById('bcMsg');
+            var modeEl  = document.getElementById('bcRecipients');
+            if (!titleEl || !msgEl || !modeEl) return;
+
+            var title = titleEl.value.trim();
+            var msg   = msgEl.value.trim();
+            var mode  = modeEl.value;
+            if (!title || !msg) { showToast('Title and message are required.', 'warning'); return; }
+
+            var userIds = null;
+            var recipientLabel = '';
+            if (mode === 'selected') {
+                var checks = document.querySelectorAll('.bc-user-check:checked');
+                userIds = Array.from(checks).map(function(c) { return c.value; });
+                if (!userIds.length) { showToast('Select at least one user, or change recipients.', 'warning'); return; }
+                recipientLabel = userIds.length + ' selected user' + (userIds.length === 1 ? '' : 's');
+            } else if (mode === 'active') {
+                userIds = (allUsers || []).filter(function(u) { return !u.is_frozen; }).map(function(u) { return u.id; });
+                if (!userIds.length) { showToast('No active users to broadcast to.', 'warning'); return; }
+                recipientLabel = userIds.length + ' active user' + (userIds.length === 1 ? '' : 's');
+            } else {
+                recipientLabel = 'all users with push enabled';
+            }
+
+            if (!confirm('Send "' + title + '" to ' + recipientLabel + '?')) return;
+
+            // Disable buttons during send so the admin can't double-fire
+            var sendBtn = Array.from(document.querySelectorAll('#broadcastModal button')).find(function(b){ return /Send/.test(b.textContent); });
+            if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+
+            try {
+                var body = { title: title, message: msg };
+                if (userIds) body.user_ids = userIds;
+                var res = await api(window.CONFIG.WORKER_URL + '/admin/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                    body: JSON.stringify(body),
+                }, 30000);
+                if (!res.ok) {
+                    var err = await res.json().catch(function(){ return {}; });
+                    throw new Error(err.error || 'HTTP ' + res.status);
+                }
+                var data = await res.json();
+                var modal = document.getElementById('broadcastModal');
+                if (modal) modal.remove();
+                if (data.users_count === 0) {
+                    showToast('Sent to 0 users — no one has push enabled.', 'warning');
+                } else {
+                    var summary = '✅ Reached ' + data.users_count + ' user' + (data.users_count === 1 ? '' : 's')
+                                + ' (' + data.sent + ' delivered'
+                                + (data.failed ? ', ' + data.failed + ' failed' : '') + ')';
+                    showToast(summary, 'success');
+                }
+            } catch(e) {
+                console.error('[broadcast] failed:', e);
+                showToast('Broadcast failed: ' + e.message, 'danger');
+                if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '📤 Send'; }
+            }
+        };
+
         // ── INIT ─────────────────────────────────────────────────────
-        mainEl.innerHTML = '<div class="admin-tabs" id="tabs"></div><div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div></div>';
+        mainEl.innerHTML =
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+                '<div style="font-size:.75rem;color:var(--text-soft);">Admin Dashboard</div>' +
+                '<button onclick="window._broadcastModal()" class="btn btn-primary" style="padding:6px 14px;font-size:.78rem;">📢 Broadcast</button>' +
+            '</div>' +
+            '<div class="admin-tabs" id="tabs"></div>' +
+            '<div id="tabContent"><div style="padding:20px;text-align:center;color:var(--text-soft);">Loading…</div></div>';
 
         var tabDefs = [
             { id:'fleet',    label:'🚢 Fleet Manager' },
