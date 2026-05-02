@@ -740,13 +740,24 @@
                             '<td>' + (h.responded_at
                                 ? '<span title="' + esc(formatAbsolute(h.responded_at)) + '">' + esc(formatRelative(h.responded_at)) + '</span>'
                                 : '<span style="color:var(--text-soft);opacity:.5;">—</span>') + '</td>' +
-                            '<td><button onclick="window._viewHandoff(\'' + h.type + '\',' + h.id + ')" class="action-btn" title="View full content">👁 View</button></td>' +
+                            '<td><button class="action-btn js-view-handoff" data-handoff-type="' + esc(h.type) + '" data-handoff-id="' + esc(String(h.id)) + '" title="View full content">👁 View</button></td>' +
                         '</tr>';
                     }).join('') +
                     '</tbody></table></div>';
             }
 
             cnt.innerHTML = statsHtml + chipsHtml + tableHtml;
+
+            // Event delegation — wire all View buttons in this tab. Using
+            // delegation (instead of inline onclick) means special characters
+            // in IDs or types can never break the onclick attribute syntax.
+            cnt.querySelectorAll('.js-view-handoff').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var t = btn.getAttribute('data-handoff-type');
+                    var i = btn.getAttribute('data-handoff-id');
+                    window._viewHandoff(t, i);
+                });
+            });
         }
 
         window._setHandoffFilter = function(id) {
