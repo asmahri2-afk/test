@@ -37,9 +37,84 @@ window.initMap = function() {
     const mapEl = document.getElementById('map');
     if (!mapEl) return;
     window.S.mapInstance = L.map('map', { center: [25, -15], zoom: 5 });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
-    }).addTo(window.S.mapInstance);
+
+    // ─── Base layers ───────────────────────────────────────────────────────
+    // Three styles, all free, no API key needed.  CartoDB Voyager is the
+    // light-but-friendly default — clean labels, professional look.  Dark
+    // Matter for night/low-light viewing.  Esri World Imagery for satellite.
+    const baseLayers = {
+        'Light': L.tileLayer(
+            'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+            {
+                attribution: '© OpenStreetMap, © CARTO',
+                subdomains:  'abcd',
+                maxZoom:     19
+            }
+        ),
+        'Dark': L.tileLayer(
+            'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            {
+                attribution: '© OpenStreetMap, © CARTO',
+                subdomains:  'abcd',
+                maxZoom:     19
+            }
+        ),
+        'Satellite': L.tileLayer(
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            {
+                attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
+                maxZoom:     19
+            }
+        )
+    };
+
+    // ─── Maritime overlay (OpenSeaMap) ────────────────────────────────────
+    // Buoys, sea marks, harbours, lights, depth contours.  Sits on top of
+    // whichever base layer is active; transparent everywhere else.
+    const seamarks = L.tileLayer(
+        'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+        {
+            attribution: '© OpenSeaMap contributors',
+            maxZoom:     18,
+            opacity:     0.95
+        }
+    );
+
+    // ─── Restore saved choice (persists across reloads) ───────────────────
+    let savedBase = 'Light';
+    let seamarksOn = true;
+    try {
+        const s = localStorage.getItem('vt_map_base');
+        if (s && baseLayers[s]) savedBase = s;
+        const o = localStorage.getItem('vt_map_seamarks');
+        if (o === '0') seamarksOn = false;
+    } catch (_) { /* localStorage may be blocked — fall through to defaults */ }
+
+    baseLayers[savedBase].addTo(window.S.mapInstance);
+    if (seamarksOn) seamarks.addTo(window.S.mapInstance);
+
+    // ─── Layer-toggle widget (top-right corner) ───────────────────────────
+    L.control.layers(
+        baseLayers,
+        { 'Sea marks (buoys, harbours)': seamarks },
+        { collapsed: true, position: 'topright' }
+    ).addTo(window.S.mapInstance);
+
+    // ─── Persist user's choice on every change ────────────────────────────
+    window.S.mapInstance.on('baselayerchange', e => {
+        try { localStorage.setItem('vt_map_base', e.name); } catch (_) {}
+    });
+    window.S.mapInstance.on('overlayadd overlayremove', e => {
+        if (e.name && e.name.startsWith('Sea marks')) {
+            try {
+                localStorage.setItem(
+                    'vt_map_seamarks',
+                    e.type === 'overlayadd' ? '1' : '0'
+                );
+            } catch (_) {}
+        }
+    });
+
     window.S.mapInitialized = true;
     window.updateMapMarkers();
 };
