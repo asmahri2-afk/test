@@ -71,13 +71,16 @@ window.initMap = function() {
         )
     };
 
-    // ─── Maritime overlay (sea marks via OSM-FR mirror) ──────────────────
+    // ─── Maritime overlay (OpenSeaMap official server) ───────────────────
     // Buoys, sea marks, harbours, lights, depth contours.  We use the
-    // OpenStreetMap-FR mirror instead of tiles.openseamap.org because the
-    // OSM-FR server has more reliable infrastructure and serves seamark
-    // tiles from a wider zoom range (z7+ instead of z12+).
+    // OpenSeaMap project's own t1 server.  The OSM-FR seamark mirror
+    // enforces a strict Referer policy that 403s PWAs running in standalone
+    // mode (Android home-screen apps don't always send Referer headers),
+    // and the older tiles.openseamap.org host is deprecated.  The t1 server
+    // is run by the OpenSeaMap project directly and permits third-party
+    // apps without Referer validation.
     const seamarks = L.tileLayer(
-        'https://tile.openstreetmap.fr/seamarks/{z}/{x}/{y}.png',
+        'https://t1.openseamap.org/seamark/{z}/{x}/{y}.png',
         {
             attribution: '© OpenSeaMap contributors',
             maxZoom:     18,
