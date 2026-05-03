@@ -41,7 +41,9 @@ window.initMap = function() {
     // ─── Base layers ───────────────────────────────────────────────────────
     // Three styles, all free, no API key needed.  CartoDB Voyager is the
     // light-but-friendly default — clean labels, professional look.  Dark
-    // Matter for night/low-light viewing.  Esri World Imagery for satellite.
+    // Matter for night/low-light viewing.  Google Imagery for satellite —
+    // chosen over Esri because it's faster from non-US IPs and has better
+    // global coverage.
     const baseLayers = {
         'Light': L.tileLayer(
             'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -60,25 +62,36 @@ window.initMap = function() {
             }
         ),
         'Satellite': L.tileLayer(
-            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
             {
-                attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
-                maxZoom:     19
+                attribution: '© Google',
+                subdomains:  ['0', '1', '2', '3'],
+                maxZoom:     20
             }
         )
     };
 
-    // ─── Maritime overlay (OpenSeaMap) ────────────────────────────────────
-    // Buoys, sea marks, harbours, lights, depth contours.  Sits on top of
-    // whichever base layer is active; transparent everywhere else.
+    // ─── Maritime overlay (sea marks via OSM-FR mirror) ──────────────────
+    // Buoys, sea marks, harbours, lights, depth contours.  We use the
+    // OpenStreetMap-FR mirror instead of tiles.openseamap.org because the
+    // OSM-FR server has more reliable infrastructure and serves seamark
+    // tiles from a wider zoom range (z7+ instead of z12+).
     const seamarks = L.tileLayer(
-        'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+        'https://tile.openstreetmap.fr/seamarks/{z}/{x}/{y}.png',
         {
             attribution: '© OpenSeaMap contributors',
             maxZoom:     18,
             opacity:     0.95
         }
     );
+
+    // Surface tile errors to console so silent failures become visible
+    const tileErrorHandler = (layerName) => (e) => {
+        console.warn(`[map] ${layerName} tile failed:`, e.tile?.src);
+    };
+    Object.entries(baseLayers).forEach(([name, layer]) =>
+        layer.on('tileerror', tileErrorHandler(name)));
+    seamarks.on('tileerror', tileErrorHandler('Sea marks'));
 
     // ─── Restore saved choice (persists across reloads) ───────────────────
     let savedBase = 'Light';
