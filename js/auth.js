@@ -62,14 +62,13 @@ window.initMap = function() {
             }
         ),
         'Satellite': L.tileLayer(
-            'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-            {
-                attribution: '© Google',
-                subdomains:  ['0', '1', '2', '3'],
-                maxZoom:     20
-            }
-        )
-    };
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+            attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+            maxZoom:     19
+        }
+    )
+};
 
     // ─── Maritime overlay (OpenSeaMap official server) ───────────────────
     // Buoys, sea marks, harbours, lights, depth contours.  We use the
