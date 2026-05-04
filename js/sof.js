@@ -190,6 +190,15 @@ window.openSOF = function(imo) {
             ${sofDateRow('18. Vessel dropped anchor', 'sof-anchor-drop')}
             ${sofDateRow('19. Weighed anchor', 'sof-anchor-weigh')}
             ${sofDateRow('20. Pilot on board', 'sof-pilot')}
+            <div class="sof-row">
+                <label class="sof-label">Tugs</label>
+                <div style="display:flex;gap:6px;align-items:center;flex:1;">
+                    <span style="font-size:.72rem;color:var(--text-soft);">In</span>
+                    <input id="sof-tug-in" class="sof-input" type="text" placeholder="01" maxlength="3" style="flex:0 0 60px;text-align:center;">
+                    <span style="font-size:.72rem;color:var(--text-soft);margin-left:8px;">Out</span>
+                    <input id="sof-tug-out" class="sof-input" type="text" placeholder="02" maxlength="3" style="flex:0 0 60px;text-align:center;">
+                </div>
+            </div>
 
             <!-- SECTION 3: Cargo -->
             <div class="sof-section-title" style="margin-top:16px;">${i18n.get('sofSectionCargo')}</div>
@@ -409,6 +418,8 @@ function sofCollectData(imo) {
         anchor_drop_date:fv('sof-anchor-drop-date'),anchor_drop_time: fv('sof-anchor-drop-time'),
         anchor_weigh_date:fv('sof-anchor-weigh-date'),anchor_weigh_time:fv('sof-anchor-weigh-time'),
         pilot_date:      fv('sof-pilot-date'),      pilot_time:       fv('sof-pilot-time'),
+        tug_in:          fv('sof-tug-in'),
+        tug_out:         fv('sof-tug-out'),
         cargo:           fv('sof-cargo'),
         bl_weight:       fv('sof-bl-weight'),
         bl_number:       fv('sof-bl-number'),
@@ -436,6 +447,7 @@ function sofApplyDraft(d) {
     sv('sof-anchor-drop-date', d.anchor_drop_date); sv('sof-anchor-drop-time', d.anchor_drop_time);
     sv('sof-anchor-weigh-date', d.anchor_weigh_date); sv('sof-anchor-weigh-time', d.anchor_weigh_time);
     sv('sof-pilot-date', d.pilot_date);           sv('sof-pilot-time', d.pilot_time);
+    sv('sof-tug-in', d.tug_in);                   sv('sof-tug-out', d.tug_out);
     sv('sof-cargo', d.cargo); sv('sof-bl-weight', d.bl_weight); sv('sof-bl-number', d.bl_number);
     sv('sof-nor-accepted', d.nor_accepted);
     sv('sof-port-hours', d.port_hours);
